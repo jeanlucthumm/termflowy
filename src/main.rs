@@ -3,9 +3,10 @@ use ncurses as n;
 use std::char;
 
 mod editor;
+mod render;
 
-use editor::Bullet;
 use editor::Editor;
+
 
 fn setup_ncurses() {
     // Allows for wide characters
@@ -46,12 +47,8 @@ fn test1() {
 }
 
 fn print_center(msg: &str) {
-    let (y, x) = get_max_yx(n::stdscr());
+    let (y, x) = render::get_max_yx(n::stdscr());
     n::mvprintw(y / 2, (x - msg.chars().count() as i32) / 2, msg);
-}
-
-fn pprint<T: std::fmt::Display>(msg: T) {
-    n::addstr(&format!("{}\n", msg));
 }
 
 fn main_loop(e: &mut Editor) {
@@ -68,7 +65,8 @@ fn main_loop(e: &mut Editor) {
 }
 
 fn main() {
-    setup_ncurses();
+    render::setup_ncurses();
+
     main_loop(&mut Editor::new());
     n::endwin();
 }

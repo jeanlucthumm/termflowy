@@ -1,5 +1,7 @@
 use ncurses as n;
 
+use super::render;
+
 const CHAR_BULLET: char = '•';
 const CHAR_TRIANGLE_DOWN: char = '▼';
 const CHAR_TRIANGLE_RIGHT: char = '▸';
@@ -37,15 +39,24 @@ impl Editor {
             KEY_BACKSPACE => self.get_active_bullet().remove_char(),
             _ => self.get_active_bullet().add_char(key as u8 as char),
         };
-        self.render();
+        self.render_bullets();
         true
     }
 
-    fn render(&self) {
+    fn render_bullets(&self) {
         n::wmove(n::stdscr(), 0, 0);
+        let mut first = true;
         for bullet in &self.bullets {
+            if first {
+                first = false; 
+            } else {
+                n::addstr("\n");
+            }
             bullet.print();
         }
+        let (y, x) = render::get_yx(n::stdscr());
+        render::clear_remaining(n::stdscr());
+        n::wmove(n::stdscr(), y, x); 
     }
 
     fn get_active_bullet(&mut self) -> &mut Bullet {
@@ -75,7 +86,7 @@ impl Bullet {
     }
 
     fn print(&self) {
-        n::addstr(&format!(" {} {}\n", &CHAR_BULLET, &self.content));
+        n::addstr(&format!(" {} {}", &CHAR_BULLET, &self.content));
     }
 }
 
