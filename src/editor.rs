@@ -1,6 +1,8 @@
 use ncurses as n;
 
-use super::render;
+use crate::render;
+use crate::tree;
+use std::rc::Rc;
 
 const CHAR_BULLET: char = '•';
 const CHAR_TRIANGLE_DOWN: char = '▼';
@@ -8,6 +10,9 @@ const CHAR_TRIANGLE_RIGHT: char = '▸';
 
 const KEY_BACKSPACE: i32 = 127;
 const KEY_ENTER: i32 = 10;
+const KEY_TAB: i32 = 9;
+
+const INDENTATION: &'static str = "  ";
 
 // TODO First goal
 // - Can edit text as expected
@@ -15,16 +20,38 @@ const KEY_ENTER: i32 = 10;
 // - Indentation levels with tab and s-tab
 
 pub struct Editor {
-    active_bullet: usize,
-    bullets: Vec<Bullet>,
+    root_bullet: Rc<tree::BulletCell>,
+    active_bullet: Rc<tree::BulletCell>,
+    window_store: render::WindowStore,
+    id_gen: IdGen,
+}
+
+struct IdGen {
+    current: i32,
+}
+
+impl tree::IdGenerator for IdGen {
+    fn gen(&mut self) -> i32 {
+        (self.current, self.current += 1).0
+    }
 }
 
 impl Editor {
-    pub fn new() -> Editor {
+    pub fn new(window_store: render::WindowStore) -> Editor {
+        let mut id_gen = IdGen {
+            current: 0,
+        };
+        let (root, active) = tree::new_tree(&mut id_gen);
         Editor {
-            active_bullet: 0,
-            bullets: vec![Bullet::new()],
+            root_bullet: root,
+            active_bullet: active,
+            window_store,
+            id_gen,
         }
+    }
+
+    pub fn init(&self) {
+        render_tree(&self.root_bullet);
     }
 
     pub fn on_key_press(&mut self, key: i32) -> bool {
@@ -32,64 +59,44 @@ impl Editor {
             return false;
         }
         match key {
+            KEY_TAB => {
+                tree::indent(&self.active_bullet);
+            }
             KEY_ENTER => {
-                self.bullets.push(Bullet::new());
-                self.active_bullet += 1;
+                self.active_bullet = tree::create_sibling_of(&self.active_bullet, &mut self.id_gen);
             }
-            KEY_BACKSPACE => self.get_active_bullet().remove_char(),
-            _ => self.get_active_bullet().add_char(key as u8 as char),
+            KEY_BACKSPACE => {
+                self.active_bullet.borrow_mut().content.data.pop();
+            }
+            _ => {
+                self.active_bullet.borrow_mut().content.data.push(key as u8 as char);
+            }
         };
-        self.render_bullets();
+        render_tree(&self.root_bullet);
         true
-    }
-
-    fn render_bullets(&self) {
-        n::wmove(n::stdscr(), 0, 0);
-        let mut first = true;
-        for bullet in &self.bullets {
-            if first {
-                first = false; 
-            } else {
-                n::addstr("\n");
-            }
-            bullet.print();
-        }
-        let (y, x) = render::get_yx(n::stdscr());
-        render::clear_remaining(n::stdscr());
-        n::wmove(n::stdscr(), y, x); 
-    }
-
-    fn get_active_bullet(&mut self) -> &mut Bullet {
-        &mut self.bullets[self.active_bullet]
-    }
-}
-
-pub struct Bullet {
-    content: String,
-    children: Vec<Box<Bullet>>,
-}
-
-impl Bullet {
-    fn new() -> Bullet {
-        Bullet {
-            content: String::new(),
-            children: Vec::new(),
-        }
-    }
-
-    fn add_char(&mut self, c: char) {
-        self.content.push(c);
-    }
-
-    fn remove_char(&mut self) {
-        self.content.pop();
-    }
-
-    fn print(&self) {
-        n::addstr(&format!(" {} {}", &CHAR_BULLET, &self.content));
     }
 }
 
 pub fn ctrl(c: char) -> i32 {
     (c as i32) & 0x1f
+}
+
+fn render_tree(root: &Rc<tree::BulletCell>) {
+    let (y, x) = render::get_yx(n::stdscr());
+    n::wmove(n::stdscr(), 0, 0);
+
+    for child in &root.borrow().children {
+        render_subtree(child, 0);
+    }
+    n::wmove(n::stdscr(), y, x);
+}
+
+fn render_subtree(bullet: &Rc<tree::BulletCell>, indentation_lvl: usize) {
+    let content = &bullet.borrow().content;
+    n::addstr(&format!("{}{} {}", INDENTATION.repeat(indentation_lvl), CHAR_BULLET, content.data));
+    render::clear_remaining_line(n::stdscr());
+
+    for child in &bullet.borrow().children {
+        render_subtree(child, indentation_lvl + 1);
+    }
 }

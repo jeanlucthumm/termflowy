@@ -4,30 +4,10 @@ use std::char;
 
 mod editor;
 mod render;
+mod tree;
 
 use editor::Editor;
-
-
-fn setup_ncurses() {
-    // Allows for wide characters
-    n::setlocale(n::LcCategory::ctype, "");
-    n::initscr();
-    // Captures signal sequences and no buffer
-    n::raw();
-    // F keys and arrows
-    n::keypad(n::stdscr(), true);
-    // Doesn't echo typed keys
-    n::noecho();
-}
-
-fn get_max_yx(win: n::WINDOW) -> (i32, i32) {
-    let mut y: i32 = 0;
-    let mut x: i32 = 0;
-    n::getmaxyx(win, &mut y, &mut x);
-    (y, x)
-}
-
-// --------------------------------------------------------------------------------
+use render::debug;
 
 fn test1() {
     n::addstr("Type any character to see it in bold\n");
@@ -52,6 +32,7 @@ fn print_center(msg: &str) {
 }
 
 fn main_loop(e: &mut Editor) {
+    e.init();
     loop {
         let key = n::getch();
         if key == editor::ctrl('c') {
@@ -67,6 +48,13 @@ fn main_loop(e: &mut Editor) {
 fn main() {
     render::setup_ncurses();
 
-    main_loop(&mut Editor::new());
+    let window_store = render::WindowStore{
+        debug: render::debug::create_window(10, 50, 10, 10),
+    };
+
+    main_loop(&mut Editor::new(window_store));
+
+
+    n::getch();
     n::endwin();
 }
