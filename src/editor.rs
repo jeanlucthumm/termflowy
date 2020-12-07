@@ -4,15 +4,9 @@ use crate::render;
 use crate::tree;
 use std::rc::Rc;
 
-const CHAR_BULLET: char = '•';
-const CHAR_TRIANGLE_DOWN: char = '▼';
-const CHAR_TRIANGLE_RIGHT: char = '▸';
-
 const KEY_BACKSPACE: i32 = 127;
 const KEY_ENTER: i32 = 10;
 const KEY_TAB: i32 = 9;
-
-const INDENTATION: &'static str = "  ";
 
 // TODO First goal
 // - Can edit text as expected
@@ -51,7 +45,7 @@ impl Editor {
     }
 
     pub fn init(&self) {
-        render_tree(&self.root_bullet);
+        render::tree_render(&self.root_bullet, 0);
     }
 
     pub fn on_key_press(&mut self, key: i32) -> bool {
@@ -72,31 +66,11 @@ impl Editor {
                 self.active_bullet.borrow_mut().content.data.push(key as u8 as char);
             }
         };
-        render_tree(&self.root_bullet);
+        render::tree_render(&self.root_bullet, 0);
         true
     }
 }
 
 pub fn ctrl(c: char) -> i32 {
     (c as i32) & 0x1f
-}
-
-fn render_tree(root: &Rc<tree::BulletCell>) {
-    let (y, x) = render::get_yx(n::stdscr());
-    n::wmove(n::stdscr(), 0, 0);
-
-    for child in &root.borrow().children {
-        render_subtree(child, 0);
-    }
-    n::wmove(n::stdscr(), y, x);
-}
-
-fn render_subtree(bullet: &Rc<tree::BulletCell>, indentation_lvl: usize) {
-    let content = &bullet.borrow().content;
-    n::addstr(&format!("{}{} {}", INDENTATION.repeat(indentation_lvl), CHAR_BULLET, content.data));
-    render::clear_remaining_line(n::stdscr());
-
-    for child in &bullet.borrow().children {
-        render_subtree(child, indentation_lvl + 1);
-    }
 }

@@ -1,4 +1,11 @@
 use ncurses as n;
+use crate::tree;
+use std::rc::Rc;
+
+const CHAR_BULLET: char = '•';
+const CHAR_TRIANGLE_DOWN: char = '▼';
+const CHAR_TRIANGLE_RIGHT: char = '▸';
+const INDENTATION: &'static str = "  ";
 
 #[derive(Clone, Copy)]
 pub struct WindowStore {
@@ -54,6 +61,24 @@ pub fn clear_remaining_line(win: n::WINDOW) {
     let remaining_line = screen_x - x;
     for _ in 0..remaining_line {
         n::addch(' ' as u32);
+    }
+}
+
+pub fn tree_render(root: &Rc<tree::BulletCell>, indentation_lvl: usize) {
+    n::wmove(n::stdscr(), 0, 0);
+    for child in &root.borrow().children {
+        subtree_render(child, indentation_lvl);
+    }
+    clear_remaining(n::stdscr());
+}
+
+pub fn subtree_render(bullet: &Rc<tree::BulletCell>, indentation_lvl: usize) {
+    let content = &bullet.borrow().content;
+    n::addstr(&format!("{}{} {}", INDENTATION.repeat(indentation_lvl), CHAR_BULLET, content.data));
+    clear_remaining_line(n::stdscr());
+
+    for child in &bullet.borrow().children {
+        subtree_render(child, indentation_lvl + 1);
     }
 }
 
