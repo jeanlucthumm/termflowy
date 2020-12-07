@@ -1,5 +1,3 @@
-use ncurses as n;
-
 use crate::render;
 use crate::tree;
 use std::rc::Rc;
@@ -54,7 +52,7 @@ impl Editor {
         }
         match key {
             KEY_TAB => {
-                tree::indent(&self.active_bullet);
+                let _ = tree::indent(&self.active_bullet);
             }
             KEY_ENTER => {
                 self.active_bullet = tree::create_sibling_of(&self.active_bullet, &mut self.id_gen);

@@ -7,7 +7,6 @@ mod render;
 mod tree;
 
 use editor::Editor;
-use render::debug;
 
 fn test1() {
     n::addstr("Type any character to see it in bold\n");
