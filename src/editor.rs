@@ -11,13 +11,6 @@ const KEY_TAB: i32 = 9;
 // - Bullets new on every enter
 // - Indentation levels with tab and s-tab
 
-pub struct Editor {
-    root_bullet: Rc<tree::BulletCell>,
-    active_bullet: Rc<tree::BulletCell>,
-    window_store: render::WindowStore,
-    id_gen: IdGen,
-}
-
 struct IdGen {
     current: i32,
 }
@@ -28,22 +21,29 @@ impl tree::IdGenerator for IdGen {
     }
 }
 
+pub struct Editor {
+    root_bullet: Rc<tree::BulletCell>,
+    active_bullet: Rc<tree::BulletCell>,
+    window_store: render::WindowStore,
+    id_gen: IdGen,
+    cursor_pos: (i32, i32),
+}
+
 impl Editor {
     pub fn new(window_store: render::WindowStore) -> Editor {
-        let mut id_gen = IdGen {
-            current: 0,
-        };
+        let mut id_gen = IdGen { current: 0 };
         let (root, active) = tree::new_tree(&mut id_gen);
         Editor {
             root_bullet: root,
             active_bullet: active,
             window_store,
             id_gen,
+            cursor_pos: (0, 0),
         }
     }
 
-    pub fn init(&self) {
-        render::tree_render(&self.root_bullet, 0);
+    pub fn init(&mut self) {
+        render::tree_render(&self.root_bullet, 0, self.active_bullet.borrow().id);
     }
 
     pub fn on_key_press(&mut self, key: i32) -> bool {
@@ -61,10 +61,19 @@ impl Editor {
                 self.active_bullet.borrow_mut().content.data.pop();
             }
             _ => {
-                self.active_bullet.borrow_mut().content.data.push(key as u8 as char);
+                self.active_bullet
+                    .borrow_mut()
+                    .content
+                    .data
+                    .push(key as u8 as char);
             }
         };
-        render::tree_render(&self.root_bullet, 0);
+        self.cursor_pos =
+            match render::tree_render(&self.root_bullet, 0, self.active_bullet.borrow().id) {
+                Some(coord) => coord,
+                None => (0, 0),
+            };
+        render::cursor_render(self.cursor_pos);
         true
     }
 }

@@ -64,22 +64,35 @@ pub fn clear_remaining_line(win: n::WINDOW) {
     }
 }
 
-pub fn tree_render(root: &Rc<tree::BulletCell>, indentation_lvl: usize) {
+pub fn tree_render(root: &Rc<tree::BulletCell>, indentation_lvl: usize, active_id: i32)
+                   -> Option<(i32, i32)> {
     n::wmove(n::stdscr(), 0, 0);
+    let mut active_pos: Option<(i32, i32)> = None;
     for child in &root.borrow().children {
-        subtree_render(child, indentation_lvl);
+        active_pos = active_pos.or(subtree_render(child, indentation_lvl, active_id));
     }
     clear_remaining(n::stdscr());
+    active_pos
 }
 
-pub fn subtree_render(bullet: &Rc<tree::BulletCell>, indentation_lvl: usize) {
+pub fn subtree_render(bullet: &Rc<tree::BulletCell>, indentation_lvl: usize, active_id: i32)
+                      -> Option<(i32, i32)> {
     let content = &bullet.borrow().content;
     n::addstr(&format!("{}{} {}", INDENTATION.repeat(indentation_lvl), CHAR_BULLET, content.data));
+    let mut active_pos: Option<(i32, i32)> = None;
+    if bullet.borrow().id == active_id {
+        active_pos = Some(get_yx(n::stdscr()));
+    }
     clear_remaining_line(n::stdscr());
 
     for child in &bullet.borrow().children {
-        subtree_render(child, indentation_lvl + 1);
+        active_pos = active_pos.or(subtree_render(child, indentation_lvl + 1, active_id));
     }
+    active_pos
+}
+
+pub fn cursor_render(pos: (i32, i32)) {
+    n::wmove(n::stdscr(), pos.0, pos.1);
 }
 
 pub mod debug {

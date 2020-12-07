@@ -5,7 +5,7 @@ pub type BulletCell = RefCell<Bullet>;
 
 #[derive(Debug)]
 pub struct Bullet {
-    id: i32,
+    pub id: i32,
     parent: Weak<BulletCell>,
     sibling: Weak<BulletCell>,
     pub children: Vec<Rc<BulletCell>>,
