@@ -1,5 +1,6 @@
 use crate::render;
 use crate::tree;
+use ncurses as n;
 use std::rc::Rc;
 
 const KEY_BACKSPACE: i32 = 127;
@@ -47,17 +48,18 @@ impl Editor {
     }
 
     pub fn on_key_press(&mut self, key: i32) -> bool {
-        if key == ctrl('c') {
+        let key = n::keyname(key).unwrap();
+        if key == "^C" {
             return false;
         }
-        match key {
-            KEY_TAB => {
+        match key.as_str() {
+            "^I" => {
                 let _ = tree::indent(&self.active_bullet);
             }
-            KEY_ENTER => {
+            "^J" => {
                 self.active_bullet = tree::create_sibling_of(&self.active_bullet, &mut self.id_gen);
             }
-            KEY_BACKSPACE => {
+            "^?" => {
                 self.active_bullet.borrow_mut().content.data.pop();
             }
             _ => {
@@ -65,7 +67,7 @@ impl Editor {
                     .borrow_mut()
                     .content
                     .data
-                    .push(key as u8 as char);
+                    .push_str(&key);
             }
         };
         self.cursor_pos =
