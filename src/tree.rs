@@ -47,6 +47,12 @@ impl Bullet {
     fn remove_child(&mut self, id: i32) {
         self.children.retain(|x| x.borrow().id != id);
     }
+
+    fn insert_after(&mut self, id: i32, bullet: Rc<BulletCell>) {
+        if let Some(position) = self.children.iter().position(|x| x.borrow().id == id) {
+            self.children.insert(position + 1, bullet);
+        }
+    }
 }
 
 pub fn new_tree(generator: &mut dyn IdGenerator) -> (Rc<BulletCell>, Rc<BulletCell>) {
@@ -170,5 +176,23 @@ mod tests {
         let _ = Bullet::new_as_child_of(&bullet, 2);
         bullet.borrow_mut().remove_child(1);
         assert_eq!(bullet.borrow().children.get(0).unwrap().borrow().id, 2);
+    }
+
+    #[test]
+    fn bullet_insert_after_test() {
+        let bullet = Bullet::new(0);
+        let _ = Bullet::new_as_child_of(&bullet, 1);
+        let _ = Bullet::new_as_child_of(&bullet, 2);
+        let to_insert = Bullet::new_with_parent(Rc::downgrade(&bullet), 3);
+        bullet.borrow_mut().insert_after(1, to_insert);
+        {
+            let children = &bullet.borrow().children;
+            assert_eq!(children.get(0).unwrap().borrow().id, 1);
+            assert_eq!(children.get(1).unwrap().borrow().id, 3);
+            assert_eq!(children.get(2).unwrap().borrow().id, 2);
+        }
+        let insert_end = Bullet::new_with_parent(Rc::downgrade(&bullet), 4);
+        bullet.borrow_mut().insert_after(2, insert_end);
+        assert_eq!(bullet.borrow().children.get(3).unwrap().borrow().id, 4);
     }
 }
