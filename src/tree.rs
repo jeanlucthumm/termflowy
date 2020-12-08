@@ -1,5 +1,5 @@
-use std::rc::{Rc, Weak};
 use std::cell::RefCell;
+use std::rc::{Rc, Weak};
 
 pub type BulletCell = RefCell<Bullet>;
 
@@ -51,10 +51,16 @@ impl Bullet {
 
 pub fn new_tree(generator: &mut dyn IdGenerator) -> (Rc<BulletCell>, Rc<BulletCell>) {
     let root = Bullet::new(generator.gen());
-    (root.clone(), Bullet::new_as_child_of(&root, generator.gen()))
+    (
+        root.clone(),
+        Bullet::new_as_child_of(&root, generator.gen()),
+    )
 }
 
-pub fn create_sibling_of(active: &Rc<BulletCell>, generator: &mut dyn IdGenerator) -> Rc<BulletCell> {
+pub fn create_sibling_of(
+    active: &Rc<BulletCell>,
+    generator: &mut dyn IdGenerator,
+) -> Rc<BulletCell> {
     let bullet = match active.borrow().parent.upgrade() {
         Some(parent) => Bullet::new_as_child_of(&parent, generator.gen()),
         _ => Bullet::new(generator.gen()),
@@ -95,9 +101,7 @@ mod tests {
 
     impl TestIdGen {
         fn new() -> TestIdGen {
-            TestIdGen {
-                current: 0,
-            }
+            TestIdGen { current: 0 }
         }
     }
 
@@ -113,8 +117,17 @@ mod tests {
         let (_root, active) = new_tree(&mut gen);
         active.borrow_mut().content.data.push_str("first");
         let sibling = create_sibling_of(&active, &mut gen);
-        assert_eq!(sibling.borrow().sibling.upgrade().unwrap().borrow().content.data,
-                   "first");
+        assert_eq!(
+            sibling
+                .borrow()
+                .sibling
+                .upgrade()
+                .unwrap()
+                .borrow()
+                .content
+                .data,
+            "first"
+        );
     }
 
     #[test]
@@ -126,9 +139,28 @@ mod tests {
         let second = create_sibling_of(&active, &mut gen);
         second.borrow_mut().content.data = String::from("second");
         assert!(indent(&second).is_ok());
-        assert_eq!(second.borrow().parent.upgrade().unwrap()
-                       .borrow().content.data, "first");
-        assert_eq!(active.borrow().children.get(0).unwrap().borrow().content.data, "second");
+        assert_eq!(
+            second
+                .borrow()
+                .parent
+                .upgrade()
+                .unwrap()
+                .borrow()
+                .content
+                .data,
+            "first"
+        );
+        assert_eq!(
+            active
+                .borrow()
+                .children
+                .get(0)
+                .unwrap()
+                .borrow()
+                .content
+                .data,
+            "second"
+        );
     }
 
     #[test]

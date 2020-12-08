@@ -47,12 +47,11 @@ fn main_loop(e: &mut Editor) {
 fn main() {
     render::setup_ncurses();
 
-    let window_store = render::WindowStore{
+    let window_store = render::WindowStore {
         debug: render::debug::create_window(10, 50, 10, 10),
     };
 
     main_loop(&mut Editor::new(window_store));
-
 
     n::getch();
     n::endwin();
