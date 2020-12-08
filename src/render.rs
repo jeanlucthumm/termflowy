@@ -109,10 +109,6 @@ pub fn cursor_render(pos: (i32, i32)) {
 pub mod debug {
     use super::*;
 
-    pub fn is_quit_key(key: i32) -> bool {
-        ('c' as i32) & 0x1f == key
-    }
-
     pub fn pprint<T: std::fmt::Display>(win: n::WINDOW, msg: T) {
         n::waddstr(win, &format!("{} ", msg));
         n::wrefresh(win);

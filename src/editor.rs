@@ -79,7 +79,3 @@ impl Editor {
         true
     }
 }
-
-pub fn ctrl(c: char) -> i32 {
-    (c as i32) & 0x1f
-}
