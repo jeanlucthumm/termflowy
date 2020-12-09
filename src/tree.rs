@@ -53,6 +53,22 @@ impl Bullet {
             self.children.insert(position + 1, bullet);
         }
     }
+
+    fn has_parent(&self) -> bool {
+        self.parent.upgrade().is_some()
+    }
+
+    fn parent(&self) -> Rc<BulletCell> {
+        self.parent.upgrade().unwrap()
+    }
+
+    fn has_sibling(&self) -> bool {
+        self.sibling.upgrade().is_some()
+    }
+
+    fn sibling(&self) -> Rc<BulletCell> {
+        self.sibling.upgrade().unwrap()
+    }
 }
 
 pub fn new_tree(generator: &mut dyn IdGenerator) -> (Rc<BulletCell>, Rc<BulletCell>) {
@@ -76,7 +92,7 @@ pub fn create_sibling_of(
 }
 
 pub fn indent(active: &Rc<BulletCell>) -> Result<(), &str> {
-    if active.borrow().sibling.upgrade().is_some() {
+    if active.borrow().has_sibling() {
         {
             let active_clone = active.clone();
             let active = active.borrow();
