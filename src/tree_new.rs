@@ -1,8 +1,6 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 
-type NodeCell = RefCell<Node>;
-type NodeMap = HashMap<i32, NodeCell>;
+type NodeMap = HashMap<i32, Node>;
 
 pub trait IdGenerator {
     fn gen(&mut self) -> i32;
@@ -20,9 +18,9 @@ impl<'a> Tree<'a> {
         let id = generator.gen();
         let mut root = Node::new(0, None);
         root.children.push(id);
-        nodes.insert(0, NodeCell::new(root));
+        nodes.insert(0, root);
         let first = Node::new(id, Some(0));
-        nodes.insert(id, NodeCell::new(first));
+        nodes.insert(id, first);
         Tree {
             active: id,
             nodes,
@@ -32,31 +30,31 @@ impl<'a> Tree<'a> {
 
     /// Create another bullet at the same level, i.e. a sibling of the active node
     pub fn create_sibling(&mut self) {
-        let active = self.nodes.get(&self.active).unwrap().borrow();
+        let active = self.nodes.get(&self.active).unwrap();
         let mut node = Node::new(self.generator.gen(), active.parent);
         node.sibling = Some(active.id);
-        drop(active);
         self.active = node.id;
-        self.nodes.insert(node.id, NodeCell::new(node));
+        self.nodes.insert(node.id, node);
     }
 
     pub fn indent(&mut self) -> Result<(), &str> {
-        let mut active = self.nodes.get(&self.active).unwrap().borrow_mut();
-        let mut parent = self
-            .nodes
-            .get(&active.parent.unwrap())
-            .unwrap()
-            .borrow_mut();
-        if let Some(sibling) = active.sibling {
-            let mut sibling = self.nodes.get(&sibling).unwrap().borrow_mut();
-            parent.children.retain(|i| *i != active.id);
-            active.parent = active.sibling;
-            active.sibling = None;
-            sibling.children.push(active.id);
-            Ok(())
+        let active = self.nodes.get(&self.active).unwrap();
+        let id = active.id;
+        let parent_id = active.parent.unwrap();
+        let sibling_id = if let Some(x) = active.sibling {
+            x
         } else {
-            Err("could not indent: node has no siblings")
-        }
+            return Err("could not indent: node has no siblings");
+        };
+
+        let parent = self.nodes.get_mut(&parent_id).unwrap();
+        parent.children.retain(|i| *i != id);
+        let sibling = self.nodes.get_mut(&sibling_id).unwrap();
+        sibling.children.push(id);
+        let active = self.nodes.get_mut(&id).unwrap();
+        active.parent = Some(sibling_id);
+        active.sibling = None;
+        Ok(())
     }
 }
 
@@ -109,7 +107,7 @@ mod tests {
         tree.create_sibling();
         assert_eq!(tree.active, 2);
 
-        let active_node = tree.nodes.get(&tree.active).unwrap().borrow();
+        let active_node = tree.nodes.get(&tree.active).unwrap();
         assert_eq!(active_node.parent.unwrap(), 0);
         assert_eq!(active_node.sibling.unwrap(), 1);
     }
@@ -123,7 +121,7 @@ mod tests {
         tree.create_sibling();
         assert!(tree.indent().is_ok());
 
-        let active_node = tree.nodes.get(&tree.active).unwrap().borrow();
+        let active_node = tree.nodes.get(&tree.active).unwrap();
         assert_eq!(active_node.parent, Some(1));
         assert_eq!(active_node.sibling, None);
         assert_eq!(active_node.id, 2);
