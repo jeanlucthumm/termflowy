@@ -5,6 +5,7 @@ use std::char;
 mod editor;
 mod render;
 mod tree;
+mod tree_new;
 
 use editor::Editor;
 use render::debug;
