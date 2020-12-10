@@ -1,6 +1,6 @@
-use crate::tree;
 use ncurses as n;
-use std::rc::Rc;
+
+use crate::tree;
 
 const CHAR_BULLET: char = '•';
 const CHAR_TRIANGLE_DOWN: char = '▼';
@@ -64,40 +64,31 @@ pub fn clear_remaining_line(win: n::WINDOW) {
     }
 }
 
-pub fn tree_render(
-    root: &Rc<tree::BulletCell>,
-    indentation_lvl: usize,
-    active_id: i32,
-) -> Option<(i32, i32)> {
+pub fn tree_render(node: tree::NodeIterator, indentation_lvl: usize) -> Option<(i32, i32)> {
     n::wmove(n::stdscr(), 0, 0);
     let mut active_pos: Option<(i32, i32)> = None;
-    for child in &root.borrow().children {
-        active_pos = active_pos.or(subtree_render(child, indentation_lvl, active_id));
+    for child in node.children_iter() {
+        active_pos = active_pos.or(subtree_render(child, indentation_lvl));
     }
     clear_remaining(n::stdscr());
     active_pos
 }
 
-pub fn subtree_render(
-    bullet: &Rc<tree::BulletCell>,
-    indentation_lvl: usize,
-    active_id: i32,
-) -> Option<(i32, i32)> {
-    let content = &bullet.borrow().content;
+pub fn subtree_render(node: tree::NodeIterator, indentation_lvl: usize) -> Option<(i32, i32)> {
     n::addstr(&format!(
         "{}{} {}",
         INDENTATION.repeat(indentation_lvl),
         CHAR_BULLET,
-        content.data
+        node.content()
     ));
     let mut active_pos: Option<(i32, i32)> = None;
-    if bullet.borrow().id == active_id {
+    if node.is_active() {
         active_pos = Some(get_yx(n::stdscr()));
     }
     clear_remaining_line(n::stdscr());
 
-    for child in &bullet.borrow().children {
-        active_pos = active_pos.or(subtree_render(child, indentation_lvl + 1, active_id));
+    for child in node.children_iter() {
+        active_pos = active_pos.or(subtree_render(child, indentation_lvl + 1));
     }
     active_pos
 }

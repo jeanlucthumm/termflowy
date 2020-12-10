@@ -1,115 +1,124 @@
-use std::cell::RefCell;
-use std::rc::{Rc, Weak};
+use std::collections::HashMap;
 
-pub type BulletCell = RefCell<Bullet>;
-
-#[derive(Debug)]
-pub struct Bullet {
-    pub id: i32,
-    parent: Weak<BulletCell>,
-    sibling: Weak<BulletCell>,
-    pub children: Vec<Rc<BulletCell>>,
-    pub content: Content,
-}
-
-#[derive(Debug)]
-pub struct Content {
-    pub data: String,
-}
+type NodeMap = HashMap<i32, Node>;
 
 pub trait IdGenerator {
     fn gen(&mut self) -> i32;
 }
 
-impl Bullet {
-    fn new(id: i32) -> Rc<BulletCell> {
-        Self::new_with_parent(Weak::new(), id)
+pub struct Tree {
+    active: i32,
+    nodes: NodeMap,
+    generator: Box<dyn IdGenerator>,
+}
+
+impl Tree {
+    pub fn new(mut generator: Box<dyn IdGenerator>) -> Tree {
+        let mut nodes = NodeMap::new();
+        let id = generator.gen();
+        let mut root = Node::new(0, None);
+        root.children.push(id);
+        nodes.insert(0, root);
+        let first = Node::new(id, Some(0));
+        nodes.insert(id, first);
+        Tree {
+            active: id,
+            nodes,
+            generator,
+        }
     }
 
-    fn new_as_child_of(parent: &Rc<BulletCell>, id: i32) -> Rc<BulletCell> {
-        let bullet = Self::new_with_parent(Rc::downgrade(parent), id);
-        parent.borrow_mut().children.push(bullet.clone());
-        bullet
+    /// Create another bullet at the same level, i.e. a sibling of the active node
+    pub fn create_sibling(&mut self) {
+        let active = self.nodes.get(&self.active).unwrap();
+        let mut node = Node::new(self.generator.gen(), active.parent);
+        node.sibling = Some(active.id);
+
+        let parent = self.nodes.get_mut(&node.parent.unwrap()).unwrap();
+        parent.children.push(node.id);
+
+        self.active = node.id;
+        self.nodes.insert(node.id, node);
     }
 
-    fn new_with_parent(parent: Weak<BulletCell>, id: i32) -> Rc<BulletCell> {
-        Rc::new(BulletCell::new(Bullet {
+    pub fn indent(&mut self) -> Result<(), &str> {
+        let active = self.nodes.get(&self.active).unwrap();
+        let id = active.id;
+        let parent_id = active.parent.unwrap();
+        let sibling_id = if let Some(x) = active.sibling {
+            x
+        } else {
+            return Err("could not indent: node has no siblings");
+        };
+
+        let parent = self.nodes.get_mut(&parent_id).unwrap();
+        parent.children.retain(|i| *i != id);
+        let sibling = self.nodes.get_mut(&sibling_id).unwrap();
+        sibling.children.push(id);
+        let active = self.nodes.get_mut(&id).unwrap();
+        active.parent = Some(sibling_id);
+        active.sibling = None;
+        Ok(())
+    }
+
+    pub fn get_mut_active_content(&mut self) -> &mut String {
+        &mut self.nodes.get_mut(&self.active).unwrap().content
+    }
+
+    pub fn root_iter(&self) -> NodeIterator {
+        NodeIterator::new(self.nodes.get(&0).unwrap(), &self.nodes, self.active)
+    }
+}
+
+struct Node {
+    id: i32,
+    parent: Option<i32>,
+    sibling: Option<i32>,
+    children: Vec<i32>,
+    content: String,
+}
+
+impl Node {
+    fn new(id: i32, parent: Option<i32>) -> Node {
+        Node {
             id,
             parent,
-            sibling: Weak::new(),
+            sibling: None,
             children: vec![],
-            content: Content {
-                data: String::new(),
-            },
-        }))
-    }
-
-    fn remove_child(&mut self, id: i32) {
-        self.children.retain(|x| x.borrow().id != id);
-    }
-
-    fn insert_after(&mut self, id: i32, bullet: Rc<BulletCell>) {
-        if let Some(position) = self.children.iter().position(|x| x.borrow().id == id) {
-            self.children.insert(position + 1, bullet);
+            content: String::new(),
         }
-    }
-
-    fn has_parent(&self) -> bool {
-        self.parent.upgrade().is_some()
-    }
-
-    fn parent(&self) -> Rc<BulletCell> {
-        self.parent.upgrade().unwrap()
-    }
-
-    fn has_sibling(&self) -> bool {
-        self.sibling.upgrade().is_some()
-    }
-
-    fn sibling(&self) -> Rc<BulletCell> {
-        self.sibling.upgrade().unwrap()
     }
 }
 
-pub fn new_tree(generator: &mut dyn IdGenerator) -> (Rc<BulletCell>, Rc<BulletCell>) {
-    let root = Bullet::new(generator.gen());
-    (
-        root.clone(),
-        Bullet::new_as_child_of(&root, generator.gen()),
-    )
+pub struct NodeIterator<'a> {
+    nodes: &'a NodeMap,
+    current: &'a Node,
+    active_id: i32,
 }
 
-pub fn create_sibling_of(
-    active: &Rc<BulletCell>,
-    generator: &mut dyn IdGenerator,
-) -> Rc<BulletCell> {
-    let bullet = match active.borrow().parent.upgrade() {
-        Some(parent) => Bullet::new_as_child_of(&parent, generator.gen()),
-        _ => Bullet::new(generator.gen()),
-    };
-    bullet.borrow_mut().sibling = Rc::downgrade(&active);
-    bullet
-}
+impl<'a> NodeIterator<'a> {
+    fn new(node: &'a Node, nodes: &'a NodeMap, active_id: i32) -> NodeIterator<'a> {
+        NodeIterator {
+            nodes,
+            current: node,
+            active_id,
+        }
+    }
 
-pub fn indent(active: &Rc<BulletCell>) -> Result<(), &str> {
-    if active.borrow().has_sibling() {
-        {
-            let active_clone = active.clone();
-            let active = active.borrow();
-            if let Some(parent) = active.parent.upgrade() {
-                parent.borrow_mut().remove_child(active.id);
-            }
-            let sibling = active.sibling.upgrade().unwrap();
-            sibling.borrow_mut().children.push(active_clone);
-        }
-        {
-            let mut active = active.borrow_mut();
-            active.parent = active.sibling.clone();
-            active.sibling = Weak::new();
-        }
-        Ok(())
-    } else {
-        Err("could not indent: node has no sibling")
+    pub fn content(&self) -> &String {
+        &self.current.content
+    }
+
+    pub fn children_iter(&self) -> impl Iterator<Item = NodeIterator> {
+        self.current
+            .children
+            .iter()
+            .map(move |i| self.nodes.get(i).unwrap())
+            .map(move |n| Self::new(n, self.nodes, self.active_id))
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.current.id == self.active_id
     }
 }
 
@@ -117,98 +126,88 @@ pub fn indent(active: &Rc<BulletCell>) -> Result<(), &str> {
 mod tests {
     use super::*;
 
-    struct TestIdGen {
+    struct TestGen {
         current: i32,
     }
 
-    impl TestIdGen {
-        fn new() -> TestIdGen {
-            TestIdGen { current: 0 }
+    impl TestGen {
+        fn new() -> TestGen {
+            TestGen { current: 1 }
         }
     }
 
-    impl IdGenerator for TestIdGen {
+    impl IdGenerator for TestGen {
         fn gen(&mut self) -> i32 {
             (self.current, self.current += 1).0
         }
     }
 
+    fn new_test_tree() -> Tree {
+        Tree::new(Box::new(TestGen::new()))
+    }
+
     #[test]
     fn siblings_test() {
-        let mut gen = TestIdGen::new();
-        let (_root, active) = new_tree(&mut gen);
-        active.borrow_mut().content.data.push_str("first");
-        let sibling = create_sibling_of(&active, &mut gen);
-        assert_eq!(
-            sibling
-                .borrow()
-                .sibling
-                .upgrade()
-                .unwrap()
-                .borrow()
-                .content
-                .data,
-            "first"
-        );
+        let mut tree = new_test_tree();
+
+        assert_eq!(tree.active, 1);
+        tree.create_sibling();
+        assert_eq!(tree.active, 2);
+
+        let active_node = tree.nodes.get(&tree.active).unwrap();
+        assert_eq!(active_node.parent.unwrap(), 0);
+        assert_eq!(active_node.sibling.unwrap(), 1);
+
+        let root_node = tree.nodes.get(&0).unwrap();
+        assert!(root_node.children.iter().any(|i| *i == 1));
+        assert!(root_node.children.iter().any(|i| *i == 2));
     }
 
     #[test]
     fn indents_test() {
-        let mut gen = TestIdGen::new();
-        let (_root, active) = new_tree(&mut gen);
-        active.borrow_mut().content.data = String::from("first");
-        assert!(indent(&active).is_err());
-        let second = create_sibling_of(&active, &mut gen);
-        second.borrow_mut().content.data = String::from("second");
-        assert!(indent(&second).is_ok());
-        assert_eq!(
-            second
-                .borrow()
-                .parent
-                .upgrade()
-                .unwrap()
-                .borrow()
-                .content
-                .data,
-            "first"
-        );
-        assert_eq!(
-            active
-                .borrow()
-                .children
-                .get(0)
-                .unwrap()
-                .borrow()
-                .content
-                .data,
-            "second"
-        );
+        let mut tree = new_test_tree();
+
+        assert!(tree.indent().is_err());
+        tree.create_sibling();
+        assert!(tree.indent().is_ok());
+
+        let active_node = tree.nodes.get(&tree.active).unwrap();
+        assert_eq!(active_node.parent, Some(1));
+        assert_eq!(active_node.sibling, None);
+        assert_eq!(active_node.id, 2);
+
+        let parent_node = tree.nodes.get(&1).unwrap();
+        assert!(parent_node.children.iter().any(|i| *i == 2));
     }
 
     #[test]
-    fn bullet_remove_child_test() {
-        let bullet = Bullet::new(0);
-        let _ = Bullet::new_as_child_of(&bullet, 1);
-        let _ = Bullet::new_as_child_of(&bullet, 2);
-        bullet.borrow_mut().remove_child(1);
-        assert_eq!(bullet.borrow().children.get(0).unwrap().borrow().id, 2);
-    }
+    fn node_iterator() {
+        let mut tree = new_test_tree();
 
-    #[test]
-    fn bullet_insert_after_test() {
-        let bullet = Bullet::new(0);
-        let _ = Bullet::new_as_child_of(&bullet, 1);
-        let _ = Bullet::new_as_child_of(&bullet, 2);
-        let to_insert = Bullet::new_with_parent(Rc::downgrade(&bullet), 3);
-        bullet.borrow_mut().insert_after(1, to_insert);
-        {
-            let children = &bullet.borrow().children;
-            assert_eq!(children.get(0).unwrap().borrow().id, 1);
-            assert_eq!(children.get(1).unwrap().borrow().id, 3);
-            assert_eq!(children.get(2).unwrap().borrow().id, 2);
+        tree.create_sibling(); // id = 2
+        tree.create_sibling(); // id = 3
+        tree.create_sibling(); // id = 4
+        let _ = tree.indent(); // (4 under 3)
+        tree.create_sibling(); // id = 5 (under 3)
+
+        let root_exp_children = vec![1, 2, 3];
+        let root_itr = tree.root_iter();
+        let root_children: Vec<NodeIterator> = root_itr.children_iter().collect();
+        let mut three_itr = None;
+
+        assert_eq!(root_exp_children.len(), root_children.len());
+        for child in &root_children {
+            assert!(root_exp_children.iter().any(|&x| x == child.current.id));
+            if child.current.id == 3 {
+                three_itr = Some(child);
+            }
         }
-        let insert_end = Bullet::new_with_parent(Rc::downgrade(&bullet), 4);
-        bullet.borrow_mut().insert_after(2, insert_end);
-        assert_eq!(bullet.borrow().children.get(3).unwrap().borrow().id, 4);
+
+        let three_exp_children = vec![4, 5];
+        let three_children: Vec<NodeIterator> = three_itr.unwrap().children_iter().collect();
+        assert_eq!(three_children.len(), three_exp_children.len());
+        for child in three_children {
+            assert!(three_exp_children.iter().any(|&x| x == child.current.id));
+        }
     }
 }
