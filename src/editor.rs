@@ -7,11 +7,6 @@ const KEY_BACKSPACE: i32 = 127;
 const KEY_ENTER: i32 = 10;
 const KEY_TAB: i32 = 9;
 
-// TODO First goal
-// - Can edit text as expected
-// - Bullets new on every enter
-// - Indentation levels with tab and s-tab
-
 struct IdGen {
     current: i32,
 }
