@@ -187,7 +187,7 @@ mod tests {
         tree.create_sibling(); // id = 2
         tree.create_sibling(); // id = 3
         tree.create_sibling(); // id = 4
-        let _ = tree.indent(); // (4 under 3)
+        assert!(tree.indent().is_ok()); // (4 under 3)
         tree.create_sibling(); // id = 5 (under 3)
 
         let root_exp_children = vec![1, 2, 3];

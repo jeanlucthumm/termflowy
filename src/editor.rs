@@ -31,7 +31,7 @@ pub struct Editor {
 impl Editor {
     pub fn new(window_store: render::WindowStore) -> Editor {
         Editor {
-            bullet_tree: tree::Tree::new(Box::new(IdGen { current: 0 })),
+            bullet_tree: tree::Tree::new(Box::new(IdGen { current: 1 })),
             window_store,
             cursor_pos: (0, 0),
         }
