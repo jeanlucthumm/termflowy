@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 use ncurses as n;
-use std::char;
 
 mod editor;
 mod render;
