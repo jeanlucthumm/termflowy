@@ -3,10 +3,6 @@ use ncurses as n;
 use crate::render;
 use crate::tree;
 
-const KEY_BACKSPACE: i32 = 127;
-const KEY_ENTER: i32 = 10;
-const KEY_TAB: i32 = 9;
-
 struct IdGen {
     current: i32,
 }
