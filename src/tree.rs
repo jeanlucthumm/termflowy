@@ -53,11 +53,17 @@ impl Tree {
 
         let parent = self.nodes.get_mut(&parent_id).unwrap();
         parent.children.retain(|i| *i != id);
+
         let sibling = self.nodes.get_mut(&sibling_id).unwrap();
+        let new_sibling = match sibling.children.last() {
+            Some(id) => Some(*id),
+            None => None,
+        };
         sibling.children.push(id);
+
         let active = self.nodes.get_mut(&id).unwrap();
         active.parent = Some(sibling_id);
-        active.sibling = None;
+        active.sibling = new_sibling;
         Ok(())
     }
 
@@ -95,6 +101,7 @@ impl Tree {
     }
 }
 
+#[derive(Debug)]
 struct Node {
     id: i32,
     parent: Option<i32>,
@@ -216,6 +223,18 @@ mod tests {
         let two = tree.nodes.get(&2).unwrap();
         assert_eq!(two.parent, Some(0));
         assert_eq!(two.sibling, Some(1));
+        println!("{:?}", two);
+
+
+        assert!(tree.indent().is_ok());
+        tree.create_sibling(); // id = 3 (under 1)
+        tree.create_sibling(); // id = 4 (under 1)
+        tree.create_sibling(); // id = 5 (under 1)
+        assert!(tree.unindent().is_ok()); // (5 under root)
+        assert!(tree.indent().is_ok()); // (5 under 1)
+        let five = tree.nodes.get(&5).unwrap();
+        assert_eq!(five.parent, Some(1));
+        assert_eq!(five.sibling, Some(4));
     }
 
     #[test]
