@@ -54,6 +54,10 @@ impl Editor {
             "^I" => {
                 let _ = self.bullet_tree.indent();
             }
+            // Unindent
+            "KEY_BTAB" => {
+                let _ = self.bullet_tree.unindent();
+            }
             // Enter
             "^J" => {
                 self.bullet_tree.create_sibling();

@@ -61,6 +61,31 @@ impl Tree {
         Ok(())
     }
 
+    pub fn unindent(&mut self) -> Result<(), &str> {
+        let active = self.nodes.get(&self.active).unwrap();
+        let id = active.id;
+        let parent_id = active.parent.unwrap();
+        if parent_id == 0 {
+            return Err("could not unindent: already at top level");
+        }
+        let grandparent_id = self.nodes.get(&parent_id).unwrap().parent.unwrap();
+
+        let parent = self.nodes.get_mut(&parent_id).unwrap();
+        parent.children.retain(|i| *i != id);
+        let grandparent = self.nodes.get_mut(&grandparent_id).unwrap();
+        if let Some(index) = grandparent.children.iter().position(|i| *i == parent_id) {
+            grandparent.children.insert(index + 1, id);
+        } else {
+            panic!("bad tree invariant: parent not found in children of its own parent");
+        }
+
+        let active = self.nodes.get_mut(&id).unwrap();
+        active.parent = Some(grandparent_id);
+        active.sibling = Some(parent_id);
+
+        Ok(())
+    }
+
     pub fn get_mut_active_content(&mut self) -> &mut String {
         &mut self.nodes.get_mut(&self.active).unwrap().content
     }
@@ -178,6 +203,19 @@ mod tests {
 
         let parent_node = tree.nodes.get(&1).unwrap();
         assert!(parent_node.children.iter().any(|i| *i == 2));
+    }
+
+    #[test]
+    fn unindents_test() {
+        let mut tree = new_test_tree();
+
+        assert!(tree.unindent().is_err()); // 1 is already top
+        tree.create_sibling(); // id = 2
+        assert!(tree.indent().is_ok()); // (2 under 1)
+        assert!(tree.unindent().is_ok()); // (2 under root)
+        let two = tree.nodes.get(&2).unwrap();
+        assert_eq!(two.parent, Some(0));
+        assert_eq!(two.sibling, Some(1));
     }
 
     #[test]
