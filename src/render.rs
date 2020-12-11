@@ -7,6 +7,8 @@ const CHAR_TRIANGLE_DOWN: char = '▼';
 const CHAR_TRIANGLE_RIGHT: char = '▸';
 const INDENTATION: &'static str = "  ";
 
+pub type Point = (i32, i32);
+
 #[derive(Clone, Copy)]
 pub struct WindowStore {
     pub debug: n::WINDOW,
@@ -95,6 +97,17 @@ pub fn subtree_render(node: tree::NodeIterator, indentation_lvl: usize) -> Optio
 
 pub fn cursor_render(pos: (i32, i32)) {
     n::wmove(n::stdscr(), pos.0, pos.1);
+}
+
+pub fn check_bounds(mut pos: Point, offset: Point) -> Option<Point> {
+    let max = get_max_yx(n::stdscr());
+    pos.0 += offset.0;
+    pos.1 += offset.1;
+    if pos.0 > max.0 || pos.0 < 0 || pos.1 > max.1 || pos.1 < 0 {
+        None
+    } else {
+        Some(pos)
+    }
 }
 
 pub mod debug {

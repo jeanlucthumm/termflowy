@@ -15,7 +15,7 @@ fn main_loop(e: &mut Editor, windows: render::WindowStore) {
     loop {
         let key = n::getch();
         let key_str = n::keyname(key).unwrap();
-        if key_str == "^C" {
+        if key_str == "^[" {
             break;
         }
         if key_str == "^D" {
