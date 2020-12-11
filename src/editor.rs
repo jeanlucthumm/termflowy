@@ -47,7 +47,7 @@ impl Editor {
             Command(pos) => {
                 self.on_command_key_press(&key, pos);
                 let _ = render::tree_render(self.bullet_tree.root_iter(), 0);
-            },
+            }
             Insert(pos) => {
                 self.on_insert_key_press(&key, pos);
                 let cursor = match render::tree_render(self.bullet_tree.root_iter(), 0) {
@@ -57,7 +57,7 @@ impl Editor {
                 if let Insert(_) = self.cursor {
                     self.cursor = cursor;
                 }
-            },
+            }
         }
         let pos = match self.cursor {
             Command(pos) => pos,
@@ -113,8 +113,7 @@ enum CursorState {
 impl CursorState {
     fn pos(&self) -> Point {
         match self {
-            Command(pos) => *pos,
-            Insert(pos) => *pos,
+            Command(pos) | Insert(pos) => *pos,
         }
     }
 }
