@@ -69,7 +69,11 @@ impl Editor {
         PanelUpdate {
             should_render: true,
             should_quit: false,
-            status_msg: String::from("inside"),
+            status_msg: if let Command(pos) = self.cursor {
+                format!("{:?}", self.raster.as_ref().unwrap().get(pos).unwrap())
+            } else {
+                String::new()
+            }
         }
     }
 

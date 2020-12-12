@@ -7,6 +7,7 @@ pub struct Raster {
 }
 
 impl Raster {
+    // max is not inclusive
     pub fn new(max: (i32, i32)) -> Raster {
         Raster {
             map: vec![Vec::with_capacity((max.1 + 1) as usize); (max.0 + 1) as usize],
@@ -16,11 +17,11 @@ impl Raster {
     }
 
     pub fn push(&mut self, state: PixelState) {
-        if self.current.0 > self.max.0 {
+        if self.current.0 >= self.max.0 {
             panic!("cannot add to full raster")
         }
         self.map[self.current.0 as usize].push(state);
-        self.current.1 = if self.current.1 < self.max.1 {
+        self.current.1 = if self.current.1 < self.max.1 - 1 {
             self.current.1 + 1
         } else {
             self.current.0 += 1;
@@ -63,7 +64,7 @@ mod tests {
 
     #[test]
     fn works() {
-        let mut raster = Raster::new((1, 1));
+        let mut raster = Raster::new((2, 2));
         raster.push(Empty);
         raster.push(Filler(2));
         raster.push(Empty);

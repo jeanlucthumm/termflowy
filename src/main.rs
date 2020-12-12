@@ -67,7 +67,7 @@ fn main() {
 
     let window_store = render::WindowStore {
         editor: render::create_window(bounds.0 - 2, bounds.1 - 1, 0, 0),
-        status: render::create_window(1, bounds.1 - 1, bounds.0 - 1, 0),
+        status: render::create_window(1, bounds.1, bounds.0 - 1, 0),
     };
 
     let stats = main_loop(&mut Editor::new(window_store.editor), window_store);

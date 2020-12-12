@@ -49,11 +49,10 @@ pub fn get_yx(win: n::WINDOW) -> (i32, i32) {
 }
 
 pub fn clear_remaining(win: n::WINDOW) -> u32 {
-    let (mut screen_y, mut screen_x, mut y, mut x): (i32, i32, i32, i32) = (0, 0, 0, 0);
-    n::getmaxyx(win, &mut screen_y, &mut screen_x);
-    n::getyx(win, &mut y, &mut x);
+    let size = get_max_yx(win);
+    let pos = get_yx(win);
 
-    let remaining = (screen_x - x) + (screen_y - y) * (screen_x);
+    let remaining = (size.1 - pos.1) + (size.0 - pos.0 - 1) * (size.1);
     if remaining.is_negative() {
         panic!("tried to clear a negative amount on line");
     }
@@ -64,11 +63,10 @@ pub fn clear_remaining(win: n::WINDOW) -> u32 {
 }
 
 pub fn clear_remaining_line(win: n::WINDOW) -> u32 {
-    let (mut _screen_y, mut screen_x, mut _y, mut x): (i32, i32, i32, i32) = (0, 0, 0, 0);
-    n::getmaxyx(win, &mut _screen_y, &mut screen_x);
-    n::getyx(win, &mut _y, &mut x);
+    let size = get_max_yx(win);
+    let pos = get_yx(win);
 
-    let remaining_line = screen_x - x;
+    let remaining_line = size.1 - pos.1;
     if remaining_line.is_negative() {
         panic!("tried to clear a negative amount on line");
     }
@@ -167,7 +165,7 @@ pub fn check_bounds(win: n::WINDOW, mut pos: Point, offset: Point) -> Option<Poi
     let max = get_max_yx(win);
     pos.0 += offset.0;
     pos.1 += offset.1;
-    if pos.0 > max.0 || pos.0 < 0 || pos.1 > max.1 || pos.1 < 0 {
+    if pos.0 >= max.0 || pos.0 < 0 || pos.1 >= max.1 || pos.1 < 0 {
         None
     } else {
         Some(pos)
