@@ -52,7 +52,7 @@ pub enum PixelState {
     Filler(i32),
     Text {
         id: i32,
-        pos: usize, // position in content
+        offset: usize, // position in content
     },
     Bullet(i32),
 }

@@ -92,8 +92,23 @@ impl Tree {
         Ok(())
     }
 
+    pub fn activate(&mut self, id: i32) -> Result<(), String> {
+        if !self.nodes.contains_key(&id) {
+            Err(format!("could not activate node with id {}: does not exist", id))
+        }  else if id == 0 {
+            Err(String::from("cannot active root node"))
+        }  else {
+            self.active = id;
+            Ok(())
+        }
+    }
+
     pub fn get_mut_active_content(&mut self) -> &mut String {
         &mut self.nodes.get_mut(&self.active).unwrap().content
+    }
+
+    pub fn get_active_content(&self) -> &String {
+        &self.nodes.get(&self.active).unwrap().content
     }
 
     pub fn root_iter(&self) -> NodeIterator {

@@ -1,6 +1,6 @@
 use ncurses as n;
 
-use crate::raster::Raster;
+use crate::raster::{PixelState, Raster};
 use crate::tree;
 use crate::{render, PanelUpdate};
 use render::Point;
@@ -52,7 +52,7 @@ impl Editor {
                 self.raster = Some(raster);
             }
             Insert(pos, offset) => {
-                self.on_insert_key_press(&key, pos);
+                self.on_insert_key_press(&key, pos, offset);
                 let result =
                     render::tree_render(self.win, self.bullet_tree.root_iter(), 0, Some(offset));
                 let cursor = match result.1 {
@@ -73,7 +73,7 @@ impl Editor {
                 format!("{:?}", self.raster.as_ref().unwrap().get(pos).unwrap())
             } else {
                 String::new()
-            }
+            },
         }
     }
 
@@ -95,11 +95,22 @@ impl Editor {
             "l" => {
                 self.cursor = Command(render::check_bounds(self.win, pos, (0, 1)).unwrap_or(pos))
             }
+            "i" => {
+                if let Some(ref raster) = self.raster {
+                    if let Some(PixelState::Text { id, offset }) = raster.get(self.cursor.pos()) {
+                        let _ = self.bullet_tree.activate(id);
+                        self.cursor = Insert(
+                            self.cursor.pos(),
+                            self.bullet_tree.get_active_content().len() - offset,
+                        )
+                    }
+                }
+            }
             _ => {}
         }
     }
 
-    fn on_insert_key_press(&mut self, key: &str, _pos: Point) {
+    fn on_insert_key_press(&mut self, key: &str, _pos: Point, offset: usize) {
         match key {
             // Indent
             "^I" => {
@@ -121,7 +132,8 @@ impl Editor {
                 self.cursor = Command(self.cursor.pos());
             }
             _ => {
-                self.bullet_tree.get_mut_active_content().push_str(&key);
+                let content = self.bullet_tree.get_mut_active_content();
+                content.insert_str(content.len() - offset, &key);
             }
         };
     }
@@ -131,7 +143,7 @@ impl Editor {
 pub enum CursorState {
     Command(Point),
     // i32 is how many chars away from last char in content
-    Insert(Point, u32),
+    Insert(Point, usize),
 }
 
 impl CursorState {
