@@ -18,23 +18,23 @@ impl tree::IdGenerator for IdGen {
 
 pub struct Editor {
     bullet_tree: tree::Tree,
-    window_store: render::WindowStore,
+    win: n::WINDOW,
     cursor: CursorState,
     raster: Option<Raster>,
 }
 
 impl Editor {
-    pub fn new(window_store: render::WindowStore) -> Editor {
+    pub fn new(win: n::WINDOW) -> Editor {
         Editor {
             bullet_tree: tree::Tree::new(Box::new(IdGen { current: 1 })),
-            window_store,
+            win,
             cursor: Command((0, 0)),
             raster: None,
         }
     }
 
     pub fn init(&mut self) {
-        let result = render::tree_render(self.bullet_tree.root_iter(), 0);
+        let result = render::tree_render(self.win, self.bullet_tree.root_iter(), 0);
         self.cursor = match result.1 {
             Some(pos) => Insert(pos),
             None => Command((0, 0)),
@@ -50,12 +50,12 @@ impl Editor {
         match self.cursor {
             Command(pos) => {
                 self.on_command_key_press(&key, pos);
-                let (raster, _) = render::tree_render(self.bullet_tree.root_iter(), 0);
+                let (raster, _) = render::tree_render(self.win, self.bullet_tree.root_iter(), 0);
                 self.raster = Some(raster);
             }
             Insert(pos) => {
                 self.on_insert_key_press(&key, pos);
-                let result = render::tree_render(self.bullet_tree.root_iter(), 0);
+                let result = render::tree_render(self.win, self.bullet_tree.root_iter(), 0);
                 let cursor = match result.1 {
                     Some(pos) => Insert(pos),
                     None => Command((0, 0)),
@@ -70,7 +70,7 @@ impl Editor {
             Command(pos) => pos,
             Insert(pos) => pos,
         };
-        render::cursor_render(pos);
+        render::cursor_render(self.win, pos);
         true
     }
 

@@ -42,10 +42,6 @@ pub fn get_yx(win: n::WINDOW) -> (i32, i32) {
     (y, x)
 }
 
-pub fn pprint<T: std::fmt::Display>(msg: T) {
-    n::addstr(&format!("{}\n", msg));
-}
-
 pub fn clear_remaining(win: n::WINDOW) -> usize {
     let (mut screen_y, mut screen_x, mut y, mut x): (i32, i32, i32, i32) = (0, 0, 0, 0);
     n::getmaxyx(win, &mut screen_y, &mut screen_x);
@@ -77,25 +73,27 @@ pub fn clear_remaining_line(win: n::WINDOW) -> usize {
 }
 
 pub fn tree_render(
+    win: n::WINDOW,
     node: tree::NodeIterator,
     indentation_lvl: usize,
 ) -> (Raster, Option<(i32, i32)>) {
-    n::wmove(n::stdscr(), 0, 0);
+    n::wmove(win, 0, 0);
     let mut active_pos: Option<(i32, i32)> = None;
     let mut raster = Raster::new(get_max_yx(n::stdscr()));
     for child in node.children_iter() {
-        active_pos = active_pos.or(subtree_render(child, indentation_lvl, &mut raster));
+        active_pos = active_pos.or(subtree_render(win, child, indentation_lvl, &mut raster));
     }
     raster.push_multiple(PixelState::Empty, clear_remaining(n::stdscr()));
     (raster, active_pos)
 }
 
 pub fn subtree_render(
+    win: n::WINDOW,
     node: tree::NodeIterator,
     indentation_lvl: usize,
     raster: &mut Raster,
 ) -> Option<(i32, i32)> {
-    render_bullet(node.content(), indentation_lvl, node.id(), raster);
+    render_bullet(win, node.content(), indentation_lvl, node.id(), raster);
     let mut active_pos: Option<(i32, i32)> = None;
     if node.is_active() {
         active_pos = Some(get_yx(n::stdscr()));
@@ -103,13 +101,13 @@ pub fn subtree_render(
     raster.push_multiple(PixelState::Empty, clear_remaining_line(n::stdscr()));
 
     for child in node.children_iter() {
-        active_pos = active_pos.or(subtree_render(child, indentation_lvl + 1, raster));
+        active_pos = active_pos.or(subtree_render(win, child, indentation_lvl + 1, raster));
     }
     active_pos
 }
 
-fn render_bullet(content: &str, indentation_lvl: usize, node_id: i32, raster: &mut Raster) {
-    n::addstr(&format!(
+fn render_bullet(win: n::WINDOW, content: &str, indentation_lvl: usize, node_id: i32, raster: &mut Raster) {
+    n::waddstr(win, &format!(
         "{}{} {}",
         INDENTATION.repeat(indentation_lvl),
         CHAR_BULLET,
@@ -127,8 +125,8 @@ fn render_bullet(content: &str, indentation_lvl: usize, node_id: i32, raster: &m
     }
 }
 
-pub fn cursor_render(pos: (i32, i32)) {
-    n::wmove(n::stdscr(), pos.0, pos.1);
+pub fn cursor_render(win: n::WINDOW, pos: (i32, i32)) {
+    n::wmove(win, pos.0, pos.1);
 }
 
 pub fn check_bounds(mut pos: Point, offset: Point) -> Option<Point> {

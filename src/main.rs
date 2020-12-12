@@ -40,7 +40,7 @@ fn main() {
         debug: render::debug::create_window(10, 50, 10, 10),
     };
 
-    main_loop(&mut Editor::new(window_store), window_store);
+    main_loop(&mut Editor::new(n::stdscr()), window_store);
 
     n::getch();
     n::endwin();
