@@ -71,8 +71,6 @@ fn main() {
     };
 
     let stats = main_loop(&mut Editor::new(window_store.editor), window_store);
-
-    n::getch();
     n::endwin();
 
     // 5 ms
