@@ -66,7 +66,7 @@ fn main() {
     let bounds = render::get_max_yx(n::stdscr());
 
     let window_store = render::WindowStore {
-        editor: render::create_window(bounds.0 - 2, bounds.1 - 1, 0, 0),
+        editor: render::create_window(bounds.0 - 2, bounds.1, 0, 0),
         status: render::create_window(1, bounds.1, bounds.0 - 1, 0),
     };
 
