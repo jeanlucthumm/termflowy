@@ -12,6 +12,7 @@ mod status;
 
 struct RenderStats {
     key_render_times: Vec<Duration>,
+    loop_times: Vec<Duration>
 }
 
 fn average(times: &Vec<Duration>) -> f32 {
@@ -21,6 +22,7 @@ fn average(times: &Vec<Duration>) -> f32 {
 fn main_loop(e: &mut Editor, w: render::WindowStore) -> RenderStats {
     let mut stats = RenderStats {
         key_render_times: vec![],
+        loop_times: vec![],
     };
     e.init();
     n::wrefresh(w.editor);
@@ -28,12 +30,13 @@ fn main_loop(e: &mut Editor, w: render::WindowStore) -> RenderStats {
     n::wrefresh(w.status);
     loop {
         let key = n::getch();
+        let loop_now = Instant::now();
         let key_str = n::keyname(key).unwrap();
         if key_str == "^[" {
             break;
         }
         let now = Instant::now();
-        if !e.on_key_press(key) {
+        if !e.update(key) {
             break;
         }
         stats.key_render_times.push(now.elapsed());
@@ -44,6 +47,7 @@ fn main_loop(e: &mut Editor, w: render::WindowStore) -> RenderStats {
         n::wrefresh(w.status);
         n::wmove(w.editor, cursor.pos().0, cursor.pos().1);
         n::wrefresh(w.editor);
+        stats.loop_times.push(loop_now.elapsed());
     }
     stats
 }
@@ -64,5 +68,6 @@ fn main() {
     n::endwin();
 
     // 5 ms
-    println!("average latency: {:.2}", average(&stats.key_render_times));
+    println!("average editor latency: {:.2}", average(&stats.key_render_times));
+    println!("average loop latency: {:.2}", average(&stats.loop_times));
 }
