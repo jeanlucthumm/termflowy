@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use crate::render::Point;
 
 pub struct Raster {
-    pub map: HashMap<(i32, i32), PixelState>,
+    pub map: Vec<Vec<PixelState>>,
     max: (i32, i32),
     current: (i32, i32),
 }
@@ -9,7 +9,7 @@ pub struct Raster {
 impl Raster {
     pub fn new(max: (i32, i32)) -> Raster {
         Raster {
-            map: HashMap::new(),
+            map: vec![Vec::with_capacity((max.1 + 1) as usize); (max.0 + 1) as usize],
             max,
             current: (0, 0),
         }
@@ -19,7 +19,7 @@ impl Raster {
         if self.current.0 > self.max.0 {
             panic!("cannot add to full raster")
         }
-        self.map.insert(self.current, state);
+        self.map[self.current.0 as usize].push(state);
         self.current.1 = if self.current.1 < self.max.1 {
             self.current.1 + 1
         } else {
@@ -31,6 +31,16 @@ impl Raster {
     pub fn push_multiple(&mut self, state: PixelState, count: usize) {
         for _ in 0..count {
             self.push(state);
+        }
+    }
+
+    pub fn get(&self, pos: Point) -> Option<PixelState> {
+        match self.map.get(pos.0 as usize) {
+            Some(v) => match v.get(pos.1 as usize) {
+                Some(state) => Some(*state),
+                None => None,
+            }
+            None => None,
         }
     }
 }
@@ -59,9 +69,9 @@ mod tests {
         raster.push(Empty);
         raster.push(Bullet(2));
 
-        assert_eq!(*raster.map.get(&(0, 0)).unwrap(), Empty);
-        assert_eq!(*raster.map.get(&(0, 1)).unwrap(), Filler(2));
-        assert_eq!(*raster.map.get(&(1, 0)).unwrap(), Empty);
-        assert_eq!(*raster.map.get(&(1, 1)).unwrap(), Bullet(2));
+        assert_eq!(raster.get((0, 0)).unwrap(), Empty);
+        assert_eq!(raster.get((0, 1)).unwrap(), Filler(2));
+        assert_eq!(raster.get((1, 0)).unwrap(), Empty);
+        assert_eq!(raster.get((1, 1)).unwrap(), Bullet(2));
     }
 }

@@ -59,6 +59,6 @@ fn main() {
     n::getch();
     n::endwin();
 
-    // currently around 38 ms mostly due to the raster (without, it's 2 ms)
+    // 5 ms
     println!("average latency: {:.2}", average(&stats.key_render_times));
 }
