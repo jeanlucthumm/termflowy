@@ -34,9 +34,9 @@ impl Editor {
     }
 
     pub fn init(&mut self) {
-        let result = render::tree_render(self.win, self.bullet_tree.root_iter(), 0);
+        let result = render::tree_render(self.win, self.bullet_tree.root_iter(), 0, Some(0));
         self.cursor = match result.1 {
-            Some(pos) => Insert(pos),
+            Some(pos) => Insert(pos, 0),
             None => Command((0, 0)),
         };
         self.raster = Some(result.0);
@@ -51,27 +51,25 @@ impl Editor {
         match self.cursor {
             Command(pos) => {
                 self.on_command_key_press(&key, pos);
-                let (raster, _) = render::tree_render(self.win, self.bullet_tree.root_iter(), 0);
+                let (raster, _) =
+                    render::tree_render(self.win, self.bullet_tree.root_iter(), 0, None);
                 self.raster = Some(raster);
             }
-            Insert(pos) => {
+            Insert(pos, offset) => {
                 self.on_insert_key_press(&key, pos);
-                let result = render::tree_render(self.win, self.bullet_tree.root_iter(), 0);
+                let result =
+                    render::tree_render(self.win, self.bullet_tree.root_iter(), 0, Some(offset));
                 let cursor = match result.1 {
-                    Some(pos) => Insert(pos),
+                    Some(pos) => Insert(pos, offset),
                     None => Command((0, 0)),
                 };
                 self.raster = Some(result.0);
-                if let Insert(_) = self.cursor {
+                if let Insert(_, _) = self.cursor {
                     self.cursor = cursor;
                 }
             }
         }
-        let pos = match self.cursor {
-            Command(pos) => pos,
-            Insert(pos) => pos,
-        };
-        render::cursor_render(self.win, pos);
+        render::cursor_render(self.win, self.cursor.pos());
         true
     }
 
@@ -128,13 +126,14 @@ impl Editor {
 #[derive(Copy, Clone)]
 pub enum CursorState {
     Command(Point),
-    Insert(Point),
+    // i32 is how many chars away from last char in content
+    Insert(Point, u32),
 }
 
 impl CursorState {
     pub fn pos(&self) -> Point {
         match self {
-            Command(pos) | Insert(pos) => *pos,
+            Command(pos) | Insert(pos, _) => *pos,
         }
     }
 }

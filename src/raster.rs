@@ -28,7 +28,7 @@ impl Raster {
         };
     }
 
-    pub fn push_multiple(&mut self, state: PixelState, count: usize) {
+    pub fn push_multiple(&mut self, state: PixelState, count: u32) {
         for _ in 0..count {
             self.push(state);
         }
