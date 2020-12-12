@@ -40,6 +40,7 @@ impl Editor {
             None => Command((0, 0)),
         };
         self.raster = Some(result.0);
+        render::cursor_render(self.win, self.cursor.pos());
     }
 
     pub fn on_key_press(&mut self, key: i32) -> bool {
@@ -74,12 +75,24 @@ impl Editor {
         true
     }
 
+    pub fn cursor(&self) -> CursorState {
+        self.cursor
+    }
+
     fn on_command_key_press(&mut self, key: &str, pos: Point) {
         match key {
-            "h" => self.cursor = Command(render::check_bounds(pos, (0, -1)).unwrap_or(pos)),
-            "j" => self.cursor = Command(render::check_bounds(pos, (1, 0)).unwrap_or(pos)),
-            "k" => self.cursor = Command(render::check_bounds(pos, (-1, 0)).unwrap_or(pos)),
-            "l" => self.cursor = Command(render::check_bounds(pos, (0, 1)).unwrap_or(pos)),
+            "h" => {
+                self.cursor = Command(render::check_bounds(self.win, pos, (0, -1)).unwrap_or(pos))
+            }
+            "j" => {
+                self.cursor = Command(render::check_bounds(self.win, pos, (1, 0)).unwrap_or(pos))
+            }
+            "k" => {
+                self.cursor = Command(render::check_bounds(self.win, pos, (-1, 0)).unwrap_or(pos))
+            }
+            "l" => {
+                self.cursor = Command(render::check_bounds(self.win, pos, (0, 1)).unwrap_or(pos))
+            }
             _ => {}
         }
     }
@@ -112,13 +125,14 @@ impl Editor {
     }
 }
 
-enum CursorState {
+#[derive(Copy, Clone)]
+pub enum CursorState {
     Command(Point),
     Insert(Point),
 }
 
 impl CursorState {
-    fn pos(&self) -> Point {
+    pub fn pos(&self) -> Point {
         match self {
             Command(pos) | Insert(pos) => *pos,
         }

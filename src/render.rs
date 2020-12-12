@@ -13,7 +13,13 @@ pub type Point = (i32, i32);
 
 #[derive(Clone, Copy)]
 pub struct WindowStore {
-    pub debug: n::WINDOW,
+    pub editor: n::WINDOW,
+    pub status: n::WINDOW,
+}
+
+pub fn create_window(h: i32, w: i32, y: i32, x: i32) -> n::WINDOW {
+    let win = n::newwin(h, w, y, x);
+    win
 }
 
 pub fn setup_ncurses() {
@@ -52,7 +58,7 @@ pub fn clear_remaining(win: n::WINDOW) -> usize {
         panic!("tried to clear a negative amount on line");
     }
     for _ in 0..remaining {
-        n::addch(' ' as u32);
+        n::waddch(win, ' ' as u32);
     }
     remaining as usize
 }
@@ -67,9 +73,14 @@ pub fn clear_remaining_line(win: n::WINDOW) -> usize {
         panic!("tried to clear a negative amount on line");
     }
     for _ in 0..remaining_line {
-        n::addch(' ' as u32);
+        n::waddch(win, ' ' as u32);
     }
     remaining_line as usize
+}
+
+pub fn addstr_right_aligned(win: n::WINDOW, txt: &str) {
+    let bounds = get_max_yx(win);
+    n::mvwaddstr(win, 0, bounds.1 - txt.len() as i32, txt);
 }
 
 pub fn tree_render(
@@ -79,11 +90,11 @@ pub fn tree_render(
 ) -> (Raster, Option<(i32, i32)>) {
     n::wmove(win, 0, 0);
     let mut active_pos: Option<(i32, i32)> = None;
-    let mut raster = Raster::new(get_max_yx(n::stdscr()));
+    let mut raster = Raster::new(get_max_yx(win));
     for child in node.children_iter() {
         active_pos = active_pos.or(subtree_render(win, child, indentation_lvl, &mut raster));
     }
-    raster.push_multiple(PixelState::Empty, clear_remaining(n::stdscr()));
+    raster.push_multiple(PixelState::Empty, clear_remaining(win));
     (raster, active_pos)
 }
 
@@ -96,9 +107,9 @@ pub fn subtree_render(
     render_bullet(win, node.content(), indentation_lvl, node.id(), raster);
     let mut active_pos: Option<(i32, i32)> = None;
     if node.is_active() {
-        active_pos = Some(get_yx(n::stdscr()));
+        active_pos = Some(get_yx(win));
     }
-    raster.push_multiple(PixelState::Empty, clear_remaining_line(n::stdscr()));
+    raster.push_multiple(PixelState::Empty, clear_remaining_line(win));
 
     for child in node.children_iter() {
         active_pos = active_pos.or(subtree_render(win, child, indentation_lvl + 1, raster));
@@ -106,13 +117,22 @@ pub fn subtree_render(
     active_pos
 }
 
-fn render_bullet(win: n::WINDOW, content: &str, indentation_lvl: usize, node_id: i32, raster: &mut Raster) {
-    n::waddstr(win, &format!(
-        "{}{} {}",
-        INDENTATION.repeat(indentation_lvl),
-        CHAR_BULLET,
-        content
-    ));
+fn render_bullet(
+    win: n::WINDOW,
+    content: &str,
+    indentation_lvl: usize,
+    node_id: i32,
+    raster: &mut Raster,
+) {
+    n::waddstr(
+        win,
+        &format!(
+            "{}{} {}",
+            INDENTATION.repeat(indentation_lvl),
+            CHAR_BULLET,
+            content
+        ),
+    );
 
     raster.push_multiple(PixelState::Empty, INDENTATION.len() * indentation_lvl);
     raster.push(PixelState::Bullet(node_id));
@@ -129,8 +149,8 @@ pub fn cursor_render(win: n::WINDOW, pos: (i32, i32)) {
     n::wmove(win, pos.0, pos.1);
 }
 
-pub fn check_bounds(mut pos: Point, offset: Point) -> Option<Point> {
-    let max = get_max_yx(n::stdscr());
+pub fn check_bounds(win: n::WINDOW, mut pos: Point, offset: Point) -> Option<Point> {
+    let max = get_max_yx(win);
     pos.0 += offset.0;
     pos.1 += offset.1;
     if pos.0 > max.0 || pos.0 < 0 || pos.1 > max.1 || pos.1 < 0 {
