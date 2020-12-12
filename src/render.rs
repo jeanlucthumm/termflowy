@@ -1,5 +1,7 @@
 use ncurses as n;
 
+use crate::raster::PixelState;
+use crate::raster::Raster;
 use crate::tree;
 
 const CHAR_BULLET: char = '•';
@@ -44,55 +46,85 @@ pub fn pprint<T: std::fmt::Display>(msg: T) {
     n::addstr(&format!("{}\n", msg));
 }
 
-pub fn clear_remaining(win: n::WINDOW) {
+pub fn clear_remaining(win: n::WINDOW) -> usize {
     let (mut screen_y, mut screen_x, mut y, mut x): (i32, i32, i32, i32) = (0, 0, 0, 0);
     n::getmaxyx(win, &mut screen_y, &mut screen_x);
     n::getyx(win, &mut y, &mut x);
 
     let remaining = (screen_x - x) + (screen_y - y) * (screen_x);
+    if remaining.is_negative() {
+        panic!("tried to clear a negative amount on line");
+    }
     for _ in 0..remaining {
         n::addch(' ' as u32);
     }
+    remaining as usize
 }
 
-pub fn clear_remaining_line(win: n::WINDOW) {
+pub fn clear_remaining_line(win: n::WINDOW) -> usize {
     let (mut _screen_y, mut screen_x, mut _y, mut x): (i32, i32, i32, i32) = (0, 0, 0, 0);
     n::getmaxyx(win, &mut _screen_y, &mut screen_x);
     n::getyx(win, &mut _y, &mut x);
 
     let remaining_line = screen_x - x;
+    if remaining_line.is_negative() {
+        panic!("tried to clear a negative amount on line");
+    }
     for _ in 0..remaining_line {
         n::addch(' ' as u32);
     }
+    remaining_line as usize
 }
 
-pub fn tree_render(node: tree::NodeIterator, indentation_lvl: usize) -> Option<(i32, i32)> {
+pub fn tree_render(
+    node: tree::NodeIterator,
+    indentation_lvl: usize,
+) -> (Raster, Option<(i32, i32)>) {
     n::wmove(n::stdscr(), 0, 0);
     let mut active_pos: Option<(i32, i32)> = None;
+    let mut raster = Raster::new(get_max_yx(n::stdscr()));
     for child in node.children_iter() {
-        active_pos = active_pos.or(subtree_render(child, indentation_lvl));
+        active_pos = active_pos.or(subtree_render(child, indentation_lvl, &mut raster));
     }
-    clear_remaining(n::stdscr());
-    active_pos
+    raster.push_multiple(PixelState::Empty, clear_remaining(n::stdscr()));
+    (raster, active_pos)
 }
 
-pub fn subtree_render(node: tree::NodeIterator, indentation_lvl: usize) -> Option<(i32, i32)> {
-    n::addstr(&format!(
-        "{}{} {}",
-        INDENTATION.repeat(indentation_lvl),
-        CHAR_BULLET,
-        node.content()
-    ));
+pub fn subtree_render(
+    node: tree::NodeIterator,
+    indentation_lvl: usize,
+    raster: &mut Raster,
+) -> Option<(i32, i32)> {
+    render_bullet(node.content(), indentation_lvl, node.id(), raster);
     let mut active_pos: Option<(i32, i32)> = None;
     if node.is_active() {
         active_pos = Some(get_yx(n::stdscr()));
     }
-    clear_remaining_line(n::stdscr());
+    raster.push_multiple(PixelState::Empty, clear_remaining_line(n::stdscr()));
 
     for child in node.children_iter() {
-        active_pos = active_pos.or(subtree_render(child, indentation_lvl + 1));
+        active_pos = active_pos.or(subtree_render(child, indentation_lvl + 1, raster));
     }
     active_pos
+}
+
+fn render_bullet(content: &str, indentation_lvl: usize, node_id: i32, raster: &mut Raster) {
+    n::addstr(&format!(
+        "{}{} {}",
+        INDENTATION.repeat(indentation_lvl),
+        CHAR_BULLET,
+        content
+    ));
+
+    raster.push_multiple(PixelState::Empty, INDENTATION.len() * indentation_lvl);
+    raster.push(PixelState::Bullet(node_id));
+    raster.push(PixelState::Filler(node_id));
+    for i in 0..content.len() {
+        raster.push(PixelState::Text {
+            id: node_id,
+            pos: i,
+        });
+    }
 }
 
 pub fn cursor_render(pos: (i32, i32)) {

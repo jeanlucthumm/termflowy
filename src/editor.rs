@@ -1,8 +1,8 @@
 use ncurses as n;
 
+use crate::raster::Raster;
 use crate::render;
 use crate::tree;
-
 use render::Point;
 use CursorState::*;
 
@@ -20,6 +20,7 @@ pub struct Editor {
     bullet_tree: tree::Tree,
     window_store: render::WindowStore,
     cursor: CursorState,
+    raster: Option<Raster>,
 }
 
 impl Editor {
@@ -28,14 +29,17 @@ impl Editor {
             bullet_tree: tree::Tree::new(Box::new(IdGen { current: 1 })),
             window_store,
             cursor: Command((0, 0)),
+            raster: None,
         }
     }
 
     pub fn init(&mut self) {
-        self.cursor = match render::tree_render(self.bullet_tree.root_iter(), 0) {
+        let result = render::tree_render(self.bullet_tree.root_iter(), 0);
+        self.cursor = match result.1 {
             Some(pos) => Insert(pos),
             None => Command((0, 0)),
         };
+        self.raster = Some(result.0);
     }
 
     pub fn on_key_press(&mut self, key: i32) -> bool {
@@ -46,14 +50,17 @@ impl Editor {
         match self.cursor {
             Command(pos) => {
                 self.on_command_key_press(&key, pos);
-                let _ = render::tree_render(self.bullet_tree.root_iter(), 0);
+                let (raster, _) = render::tree_render(self.bullet_tree.root_iter(), 0);
+                self.raster = Some(raster);
             }
             Insert(pos) => {
                 self.on_insert_key_press(&key, pos);
-                let cursor = match render::tree_render(self.bullet_tree.root_iter(), 0) {
+                let result = render::tree_render(self.bullet_tree.root_iter(), 0);
+                let cursor = match result.1 {
                     Some(pos) => Insert(pos),
                     None => Command((0, 0)),
                 };
+                self.raster = Some(result.0);
                 if let Insert(_) = self.cursor {
                     self.cursor = cursor;
                 }

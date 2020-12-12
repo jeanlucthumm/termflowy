@@ -141,6 +141,10 @@ impl<'a> NodeIterator<'a> {
         &self.current.content
     }
 
+    pub fn id(&self) -> i32 {
+        self.current.id
+    }
+
     pub fn children_iter(&self) -> impl Iterator<Item = NodeIterator> {
         self.current
             .children
