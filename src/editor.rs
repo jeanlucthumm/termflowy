@@ -1,8 +1,8 @@
 use ncurses as n;
 
 use crate::raster::Raster;
-use crate::render;
 use crate::tree;
+use crate::{render, PanelUpdate};
 use render::Point;
 use CursorState::*;
 
@@ -43,11 +43,7 @@ impl Editor {
         render::cursor_render(self.win, self.cursor.pos());
     }
 
-    pub fn on_key_press(&mut self, key: i32) -> bool {
-        let key = n::keyname(key).unwrap();
-        if key == "^[" {
-            return false;
-        }
+    pub fn update(&mut self, key: &str) -> PanelUpdate {
         match self.cursor {
             Command(pos) => {
                 self.on_command_key_press(&key, pos);
@@ -70,7 +66,11 @@ impl Editor {
             }
         }
         render::cursor_render(self.win, self.cursor.pos());
-        true
+        PanelUpdate {
+            should_render: true,
+            should_quit: false,
+            status_msg: String::from("inside"),
+        }
     }
 
     pub fn cursor(&self) -> CursorState {

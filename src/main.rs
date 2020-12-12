@@ -15,6 +15,12 @@ struct RenderStats {
     loop_times: Vec<Duration>
 }
 
+pub struct PanelUpdate {
+    pub should_render: bool,
+    pub should_quit: bool,
+    pub status_msg: String,
+}
+
 fn average(times: &Vec<Duration>) -> f32 {
     times.iter().map(|d| d.as_millis()).sum::<u128>() as f32 / times.len() as f32
 }
@@ -26,23 +32,25 @@ fn main_loop(e: &mut Editor, w: render::WindowStore) -> RenderStats {
     };
     e.init();
     n::wrefresh(w.editor);
-    render_status(w.status, e.cursor());
+    render_status(w.status, e.cursor(), "");
     n::wrefresh(w.status);
     loop {
         let key = n::getch();
         let loop_now = Instant::now();
-        let key_str = n::keyname(key).unwrap();
-        if key_str == "^[" {
+        let key = n::keyname(key).unwrap();
+        if key == "^[" {
             break;
         }
+
         let now = Instant::now();
-        if !e.update(key) {
+        let e_update = e.update(&key);
+        stats.key_render_times.push(now.elapsed());
+        if e_update.should_quit {
             break;
         }
-        stats.key_render_times.push(now.elapsed());
         let cursor = e.cursor();
 
-        render_status(w.status, cursor);
+        render_status(w.status, cursor, &e_update.status_msg);
 
         n::wrefresh(w.status);
         n::wmove(w.editor, cursor.pos().0, cursor.pos().1);
