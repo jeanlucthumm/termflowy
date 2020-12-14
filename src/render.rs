@@ -24,7 +24,7 @@ pub fn create_window(h: i32, w: i32, y: i32, x: i32) -> n::WINDOW {
 
 pub fn setup_ncurses() {
     // Allows for wide characters
-    n::setlocale(n::LcCategory::ctype, "");
+    n::setlocale(n::LcCategory::all, "");
     n::initscr();
     // Captures signal sequences and no buffer
     n::raw();

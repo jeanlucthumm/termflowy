@@ -125,7 +125,7 @@ impl Editor {
                 self.bullet_tree.create_sibling();
             }
             // Backspace
-            "^?" => {
+            "KEY_BACKSPACE" => {
                 self.bullet_tree.get_mut_active_content().pop();
             }
             "^C" => {
