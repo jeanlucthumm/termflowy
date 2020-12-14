@@ -34,7 +34,7 @@ impl Editor {
     }
 
     pub fn init(&mut self) {
-        let result = render::tree_render(self.win, self.bullet_tree.root_iter(), 0, Some(0));
+        let result = render::tree_render(self.win, self.bullet_tree.root_iter(), 0, 0);
         self.cursor = match result.1 {
             Some(pos) => Insert(pos, 0),
             None => Command((0, 0)),
@@ -47,14 +47,12 @@ impl Editor {
         match self.cursor {
             Command(pos) => {
                 self.on_command_key_press(&key, pos);
-                let (raster, _) =
-                    render::tree_render(self.win, self.bullet_tree.root_iter(), 0, None);
+                let (raster, _) = render::tree_render(self.win, self.bullet_tree.root_iter(), 0, 0);
                 self.raster = Some(raster);
             }
             Insert(pos, offset) => {
                 self.on_insert_key_press(&key, pos, offset);
-                let result =
-                    render::tree_render(self.win, self.bullet_tree.root_iter(), 0, Some(offset));
+                let result = render::tree_render(self.win, self.bullet_tree.root_iter(), 0, offset);
                 let cursor = match result.1 {
                     Some(pos) => Insert(pos, offset),
                     None => Command((0, 0)),
@@ -126,7 +124,15 @@ impl Editor {
             }
             // Backspace
             "KEY_BACKSPACE" => {
-                self.bullet_tree.get_mut_active_content().pop();
+                let content = self.bullet_tree.get_mut_active_content();
+                if let Some(remove_index) = content
+                    .len()
+                    .checked_sub(offset)
+                    .expect("offset should not be larger than length of content")
+                    .checked_sub(1)
+                {
+                    content.remove(remove_index);
+                }
             }
             "^C" => {
                 self.cursor = Command(self.cursor.pos());
@@ -142,7 +148,7 @@ impl Editor {
 #[derive(Copy, Clone)]
 pub enum CursorState {
     Command(Point),
-    // i32 is how many chars away from last char in content
+    // usize is how many chars away from last char in content
     Insert(Point, usize),
 }
 

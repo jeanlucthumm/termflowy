@@ -85,7 +85,7 @@ pub fn tree_render(
     win: n::WINDOW,
     node: tree::NodeIterator,
     indentation_lvl: usize,
-    insert_offset: Option<usize>,
+    insert_offset: usize,
 ) -> (Raster, Option<(i32, i32)>) {
     n::wmove(win, 0, 0);
     let mut cursor_pos: Option<(i32, i32)> = None;
@@ -107,19 +107,21 @@ pub fn subtree_render(
     win: n::WINDOW,
     node: tree::NodeIterator,
     indentation_lvl: usize,
-    insert_offset: Option<usize>,
+    insert_offset: usize,
     raster: &mut Raster,
 ) -> Option<(i32, i32)> {
-    render_bullet(win, node.content(), indentation_lvl, node.id(), raster);
     let mut cursor_pos: Option<(i32, i32)> = None;
     if node.is_active() {
-        cursor_pos = match insert_offset {
-            Some(offset) => {
-                let pos = get_yx(win);
-                Some((pos.0))
-            }
-            None => Some(get_yx(win))
-        };
+        cursor_pos = Some(render_active(
+            win,
+            node.content(),
+            indentation_lvl,
+            node.id(),
+            insert_offset,
+            raster,
+        ));
+    } else {
+        render_bullet(win, node.content(), indentation_lvl, node.id(), raster);
     }
     raster.push_multiple(PixelState::Empty, clear_remaining_line(win) as u32);
 
@@ -133,6 +135,34 @@ pub fn subtree_render(
         ));
     }
     cursor_pos
+}
+
+fn render_active(
+    win: n::WINDOW,
+    content: &str,
+    indentation_lvl: usize,
+    node_id: i32,
+    insert_offset: usize,
+    raster: &mut Raster,
+) -> (i32, i32) {
+    let split_index = content
+        .len()
+        .checked_sub(insert_offset)
+        .expect("offset should not be larger than len, raster generation is probably wrong");
+    let before = &content[0..split_index];
+    let after = &content[split_index..content.len()];
+    render_bullet(win, before, indentation_lvl, node_id, raster);
+    let pos = get_yx(win);
+    if after.len() > 0 {
+        n::waddstr(win, &after);
+        for i in 0..after.len() {
+            raster.push(PixelState::Text {
+                id: node_id,
+                offset: i + split_index,
+            });
+        }
+    }
+    pos
 }
 
 fn render_bullet(
@@ -152,7 +182,10 @@ fn render_bullet(
         ),
     );
 
-    raster.push_multiple(PixelState::Empty, (INDENTATION.len() as usize * indentation_lvl) as u32);
+    raster.push_multiple(
+        PixelState::Empty,
+        (INDENTATION.len() as usize * indentation_lvl) as u32,
+    );
     raster.push(PixelState::Bullet(node_id));
     raster.push(PixelState::Filler(node_id));
     for i in 0..content.len() {
