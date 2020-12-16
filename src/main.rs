@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+#![allow(clippy::eval_order_dependence)]
+
 use editor::Editor;
 use ncurses as n;
 use std::time::{Duration, Instant};
