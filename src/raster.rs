@@ -76,6 +76,8 @@ impl PixelState {
 pub enum Direction {
     Left,
     Right,
+    Up,
+    Down,
 }
 
 pub struct Browser<'a> {
@@ -88,29 +90,25 @@ impl<'a> Browser<'a> {
         self.pos
     }
 
-    pub fn go_while_count<F>(
-        &mut self,
-        mut count: u32,
-        dir: Direction,
-        predicate: F,
-    ) -> Result<(), &str>
+    pub fn go_while<F>(&mut self, dir: Direction, mut predicate: F) -> Result<(), &str>
     where
-        F: Fn(PixelState) -> bool,
+        F: FnMut(PixelState) -> bool,
     {
         let offset = match dir {
             Left => -1,
             Right => 1,
+            _ => return Err("go_while only defined for Left and Right directions")
         };
-        while count > 0 {
+        loop {
             if let Some(pos) = linear_move(self.pos, self.raster.max, offset) {
                 if let Some(state) = self.raster.get(pos) {
-                    if predicate(state) {
-                        count -= 1;
+                    if !predicate(state) {
+                        break;
                     }
                 }
                 self.pos = pos;
             } else {
-                return Err("could not browse past bounds")
+                return Err("could not browse past bounds");
             }
         }
         Ok(())
@@ -186,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn browser_go_while_count_continuous() {
+    fn browser_go_while_continuous() {
         let sample_text = Text { id: 0, offset: 0 };
         let raster = raster_from_vec(vec![
             vec![Empty, Filler(2), Empty],         //
@@ -195,18 +193,24 @@ mod tests {
         ]);
 
         let mut browser = raster.browser((1, 1)).unwrap();
+        let mut count = 2;
         browser
-            .go_while_count(2, Direction::Right, |state| state.is_text())
+            .go_while(Direction::Right, move |state| {
+                (count > 0 && state.is_text(), count -= 1).0
+            })
             .unwrap();
         assert_eq!(browser.pos(), (2, 0));
+        let mut count = 2;
         browser
-            .go_while_count(2, Direction::Left, |state| state.is_text())
+            .go_while(Direction::Left, move |state| {
+                (count > 0 && state.is_text(), count -= 1).0
+            })
             .unwrap();
         assert_eq!(browser.pos(), (1, 1));
     }
 
     #[test]
-    fn browser_go_while_count_interrupted() {
+    fn browser_go_while_interrupted() {
         let sample_text = Text { id: 0, offset: 0 };
         let raster = raster_from_vec(vec![
             vec![Bullet(2), Filler(2), sample_text, sample_text, sample_text], //
@@ -215,22 +219,34 @@ mod tests {
         ]);
 
         let mut browser = raster.browser((1, 3)).unwrap();
+        let mut count = 4;
         browser
-            .go_while_count(4, Direction::Right, |state| state.is_text())
+            .go_while(Direction::Right, move |state| {
+                (count > 0 && state.is_text(), count -= 1).0
+            })
             .unwrap();
         assert_eq!(browser.pos(), (2, 4));
+        let mut count = 4;
         browser
-            .go_while_count(2, Direction::Left, |state| state.is_text())
+            .go_while(Direction::Left, move |state| {
+                (count > 0 && state.is_text(), count -= 1).0
+            })
             .unwrap();
         assert_eq!(browser.pos(), (1, 3));
 
         // Browser won't reset position if bounds was hit
+        let mut count = 100;
         assert!(browser
-            .go_while_count(100, Direction::Right, |state| state.is_text())
+            .go_while(Direction::Right, move |state| {
+                (count > 0 && state.is_text(), count -= 1).0
+            })
             .is_err());
         assert_eq!(browser.pos(), (2, 4));
+        let mut count = 100;
         assert!(browser
-            .go_while_count(100, Direction::Left, |state| state.is_text())
+            .go_while(Direction::Left, move |state| {
+                (count > 0 && state.is_text(), count -= 1).0
+            })
             .is_err());
         assert_eq!(browser.pos(), (0, 0));
     }
