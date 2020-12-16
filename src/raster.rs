@@ -101,22 +101,19 @@ impl<'a> Browser<'a> {
             Left => -1,
             Right => 1,
         };
-        while let Some(pos) = linear_move(self.pos, self.raster.max, offset) {
-            if count == 0 {
-                break;
-            }
-            if let Some(state) = self.raster.get(pos) {
-                if predicate(state) {
-                    count -= 1;
+        while count > 0 {
+            if let Some(pos) = linear_move(self.pos, self.raster.max, offset) {
+                if let Some(state) = self.raster.get(pos) {
+                    if predicate(state) {
+                        count -= 1;
+                    }
                 }
+                self.pos = pos;
+            } else {
+                return Err("could not browse past bounds")
             }
-            self.pos = pos;
         }
-        if count == 0 {
-            Ok(())
-        } else {
-            Err("could not browse past bounds")
-        }
+        Ok(())
     }
 }
 
@@ -246,6 +243,5 @@ mod tests {
         ]);
 
         assert!(raster.browser((100, 100)).is_err());
-        let mut browser = raster.browser((0, 0)).unwrap();
     }
 }
