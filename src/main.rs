@@ -30,7 +30,6 @@ fn main_loop(e: &mut Editor, w: render::WindowStore) -> RenderStats {
         key_render_times: vec![],
         loop_times: vec![],
     };
-    e.init();
     n::wrefresh(w.editor);
     render_status(w.status, e.cursor(), "");
     n::wrefresh(w.status);

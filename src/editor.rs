@@ -20,27 +20,24 @@ pub struct Editor {
     bullet_tree: tree::Tree,
     win: n::WINDOW,
     cursor: CursorState,
-    raster: Option<Raster>,
+    raster: Raster,
 }
 
 impl Editor {
     pub fn new(win: n::WINDOW) -> Editor {
-        Editor {
-            bullet_tree: tree::Tree::new(Box::new(IdGen { current: 1 })),
-            win,
-            cursor: Command((0, 0)),
-            raster: None,
-        }
-    }
-
-    pub fn init(&mut self) {
-        let result = render::tree_render(self.win, self.bullet_tree.root_iter(), 0, 0);
-        self.cursor = match result.1 {
+        let tree = tree::Tree::new(Box::new(IdGen { current: 1 }));
+        let (raster, cursor) = render::tree_render(win, tree.root_iter(), 0, 0);
+        let cursor = match cursor {
             Some(pos) => Insert(pos, 0),
             None => Command((0, 0)),
         };
-        self.raster = Some(result.0);
-        render::cursor_render(self.win, self.cursor.pos());
+        render::cursor_render(win, cursor.pos());
+        Editor {
+            bullet_tree: tree,
+            win,
+            cursor,
+            raster,
+        }
     }
 
     pub fn update(&mut self, key: &str) -> PanelUpdate {
@@ -48,7 +45,7 @@ impl Editor {
             Command(pos) => {
                 self.on_command_key_press(&key, pos);
                 let (raster, _) = render::tree_render(self.win, self.bullet_tree.root_iter(), 0, 0);
-                self.raster = Some(raster);
+                self.raster = raster;
             }
             Insert(pos, offset) => {
                 self.on_insert_key_press(&key, pos, offset);
@@ -57,7 +54,7 @@ impl Editor {
                     Some(pos) => Insert(pos, offset),
                     None => Command((0, 0)),
                 };
-                self.raster = Some(result.0);
+                self.raster = result.0;
                 if let Insert(_, _) = self.cursor {
                     self.cursor = cursor;
                 }
@@ -68,7 +65,7 @@ impl Editor {
             should_render: true,
             should_quit: false,
             status_msg: if let Command(pos) = self.cursor {
-                format!("{:?}", self.raster.as_ref().unwrap().get(pos).unwrap())
+                format!("{:?}", self.raster.get(pos).unwrap())
             } else {
                 String::new()
             },
@@ -94,14 +91,12 @@ impl Editor {
                 self.cursor = Command(render::check_bounds(self.win, pos, (0, 1)).unwrap_or(pos))
             }
             "i" => {
-                if let Some(ref raster) = self.raster {
-                    if let Some(PixelState::Text { id, offset }) = raster.get(self.cursor.pos()) {
-                        let _ = self.bullet_tree.activate(id);
-                        self.cursor = Insert(
-                            self.cursor.pos(),
-                            self.bullet_tree.get_active_content().len() - offset,
-                        )
-                    }
+                if let Some(PixelState::Text { id, offset }) = self.raster.get(self.cursor.pos()) {
+                    let _ = self.bullet_tree.activate(id);
+                    self.cursor = Insert(
+                        self.cursor.pos(),
+                        self.bullet_tree.get_active_content().len() - offset,
+                    )
                 }
             }
             _ => {}
