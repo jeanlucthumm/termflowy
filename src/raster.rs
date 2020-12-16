@@ -64,7 +64,7 @@ pub enum PixelState {
 }
 
 impl PixelState {
-    fn is_text(self) -> bool {
+    pub fn is_text(self) -> bool {
         matches!(self, Text { .. })
     }
 }
@@ -87,28 +87,52 @@ impl<'a> Browser<'a> {
         self.pos
     }
 
-    pub fn go_while<F>(&mut self, dir: Direction, mut predicate: F) -> Result<(), &str>
+    /// Moves the Browser in a given direction while the predicate returns true or bounds were hit,
+    /// resulting in an error. Calling [pos](Browser::pos) will return the position of the pixel
+    /// for which the predicate returned false.
+    pub fn go_while<F>(&mut self, dir: Direction, mut predicate: F) -> Result<Point, &str>
     where
         F: FnMut(PixelState) -> bool,
     {
         let offset = match dir {
             Left => -1,
             Right => 1,
-            _ => return Err("go_while only defined for Left and Right directions")
+            _ => return Err("go_while only defined for Left and Right directions"),
         };
         loop {
             if let Some(pos) = linear_move(self.pos, self.raster.max, offset) {
+                self.pos = pos;
                 if let Some(state) = self.raster.get(pos) {
                     if !predicate(state) {
                         break;
                     }
                 }
-                self.pos = pos;
             } else {
                 return Err("could not browse past bounds");
             }
         }
-        Ok(())
+        Ok(self.pos)
+    }
+
+    pub fn go_count<F>(
+        &mut self,
+        dir: Direction,
+        mut count: u32,
+        mut predicate: F,
+    ) -> Result<Point, &str>
+    where
+        F: FnMut(PixelState) -> bool,
+    {
+        if count == 0 {
+            Ok(self.pos)
+        } else {
+            self.go_while(dir, move |state| {
+                if predicate(state) {
+                    count -= 1;
+                }
+                count > 0
+            })
+        }
     }
 }
 
@@ -193,14 +217,14 @@ mod tests {
         let mut count = 2;
         browser
             .go_while(Direction::Right, move |state| {
-                (count > 0 && state.is_text(), count -= 1).0
+                (count -= 1, count > 0 && state.is_text()).1
             })
             .unwrap();
         assert_eq!(browser.pos(), (2, 0));
         let mut count = 2;
         browser
             .go_while(Direction::Left, move |state| {
-                (count > 0 && state.is_text(), count -= 1).0
+                (count -= 1, count > 0 && state.is_text()).1
             })
             .unwrap();
         assert_eq!(browser.pos(), (1, 1));
@@ -216,35 +240,47 @@ mod tests {
         ]);
 
         let mut browser = raster.browser((1, 3)).unwrap();
-        let mut count = 4;
         browser
-            .go_while(Direction::Right, move |state| {
-                (count > 0 && state.is_text(), count -= 1).0
-            })
+            .go_count(Direction::Right, 3, |state| state.is_text())
             .unwrap();
         assert_eq!(browser.pos(), (2, 4));
-        let mut count = 4;
         browser
-            .go_while(Direction::Left, move |state| {
-                (count > 0 && state.is_text(), count -= 1).0
-            })
+            .go_count(Direction::Left, 3, |state| state.is_text())
             .unwrap();
         assert_eq!(browser.pos(), (1, 3));
 
         // Browser won't reset position if bounds was hit
-        let mut count = 100;
         assert!(browser
-            .go_while(Direction::Right, move |state| {
-                (count > 0 && state.is_text(), count -= 1).0
-            })
+            .go_count(Direction::Right, 100, |state| state.is_text())
             .is_err());
         assert_eq!(browser.pos(), (2, 4));
-        let mut count = 100;
         assert!(browser
-            .go_while(Direction::Left, move |state| {
-                (count > 0 && state.is_text(), count -= 1).0
-            })
+            .go_count(Direction::Left, 100, |state| state.is_text())
             .is_err());
+        assert_eq!(browser.pos(), (0, 0));
+    }
+
+    #[test]
+    fn go_while_one_jump() {
+        let text = Text { id: 0, offset: 0 };
+        let raster = raster_from_vec(vec![
+            vec![text, text], //
+            vec![text, text], //
+        ]);
+        let mut browser = raster.browser((0, 1)).unwrap();
+        browser
+            .go_while(Direction::Left, |state| !state.is_text())
+            .unwrap();
+        assert_eq!(browser.pos(), (0, 0));
+
+        let raster = raster_from_vec(vec![
+            vec![text, Empty], //
+            vec![Empty, text], //
+        ]);
+        let mut browser = raster.browser((0, 1)).unwrap();
+        browser
+            .go_while(Direction::Left, |state| !state.is_text())
+            .unwrap();
         assert_eq!(browser.pos(), (0, 0));
     }
 

@@ -1,10 +1,12 @@
 use ncurses as n;
 
-use crate::raster::{PixelState, Raster};
+use crate::raster::{Direction, PixelState, Raster};
 use crate::tree;
 use crate::{render, PanelUpdate};
 use render::Point;
 use CursorState::*;
+
+const ERR_BOUNDS: &str = "cursor position was out of bounds";
 
 struct IdGen {
     current: i32,
@@ -79,7 +81,13 @@ impl Editor {
     fn on_command_key_press(&mut self, key: &str, pos: Point) {
         match key {
             "h" => {
-                self.cursor = Command(render::check_bounds(self.win, pos, (0, -1)).unwrap_or(pos))
+                self.cursor = Command(
+                    self.raster
+                        .browser(pos)
+                        .expect(ERR_BOUNDS)
+                        .go_while(Direction::Left, |state| !state.is_text())
+                        .unwrap_or(pos),
+                );
             }
             "j" => {
                 self.cursor = Command(render::check_bounds(self.win, pos, (1, 0)).unwrap_or(pos))
@@ -88,7 +96,13 @@ impl Editor {
                 self.cursor = Command(render::check_bounds(self.win, pos, (-1, 0)).unwrap_or(pos))
             }
             "l" => {
-                self.cursor = Command(render::check_bounds(self.win, pos, (0, 1)).unwrap_or(pos))
+                self.cursor = Command(
+                    self.raster
+                        .browser(pos)
+                        .expect(ERR_BOUNDS)
+                        .go_while(Direction::Right, |state| !state.is_text())
+                        .unwrap_or(pos),
+                );
             }
             "i" => {
                 if let Some(PixelState::Text { id, offset }) = self.raster.get(self.cursor.pos()) {
