@@ -65,10 +65,7 @@ pub enum PixelState {
 
 impl PixelState {
     fn is_text(self) -> bool {
-        match self {
-            Text { .. } => true,
-            _ => false,
-        }
+        matches!(self, Text { .. })
     }
 }
 

@@ -21,7 +21,7 @@ pub struct PanelUpdate {
     pub status_msg: String,
 }
 
-fn average(times: &Vec<Duration>) -> f32 {
+fn average(times: &[Duration]) -> f32 {
     times.iter().map(|d| d.as_millis()).sum::<u128>() as f32 / times.len() as f32
 }
 

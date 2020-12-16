@@ -7,7 +7,7 @@ use crate::tree;
 const CHAR_BULLET: char = '•';
 const CHAR_TRIANGLE_DOWN: char = '▼';
 const CHAR_TRIANGLE_RIGHT: char = '▸';
-const INDENTATION: &'static str = "  ";
+const INDENTATION: &str = "  ";
 
 pub type Point = (i32, i32);
 
@@ -18,8 +18,7 @@ pub struct WindowStore {
 }
 
 pub fn create_window(h: i32, w: i32, y: i32, x: i32) -> n::WINDOW {
-    let win = n::newwin(h, w, y, x);
-    win
+    n::newwin(h, w, y, x)
 }
 
 pub fn setup_ncurses() {
@@ -91,13 +90,8 @@ pub fn tree_render(
     let mut cursor_pos: Option<(i32, i32)> = None;
     let mut raster = Raster::new(get_max_yx(win));
     for child in node.children_iter() {
-        cursor_pos = cursor_pos.or(subtree_render(
-            win,
-            child,
-            indentation_lvl,
-            insert_offset,
-            &mut raster,
-        ));
+        let subtree_pos = subtree_render(win, child, indentation_lvl, insert_offset, &mut raster);
+        cursor_pos = cursor_pos.or(subtree_pos);
     }
     raster.push_multiple(PixelState::Empty, clear_remaining(win) as u32);
     (raster, cursor_pos)
@@ -126,13 +120,8 @@ pub fn subtree_render(
     raster.push_multiple(PixelState::Empty, clear_remaining_line(win) as u32);
 
     for child in node.children_iter() {
-        cursor_pos = cursor_pos.or(subtree_render(
-            win,
-            child,
-            indentation_lvl + 1,
-            insert_offset,
-            raster,
-        ));
+        let subtree_pos = subtree_render(win, child, indentation_lvl + 1, insert_offset, raster);
+        cursor_pos = cursor_pos.or(subtree_pos);
     }
     cursor_pos
 }
@@ -153,7 +142,7 @@ fn render_active(
     let after = &content[split_index..content.len()];
     render_bullet(win, before, indentation_lvl, node_id, raster);
     let pos = get_yx(win);
-    if after.len() > 0 {
+    if !after.is_empty() {
         n::waddstr(win, &after);
         for i in 0..after.len() {
             raster.push(PixelState::Text {
