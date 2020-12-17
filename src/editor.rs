@@ -78,15 +78,15 @@ impl Editor {
         self.cursor
     }
 
-    fn on_command_key_press(&mut self, key: &str, pos: Point) {
+    fn on_command_key_press(&mut self, key: &str, pos: Point) -> Result<(), &str> {
         match key {
             "h" => {
                 self.cursor = Command(
                     self.raster
                         .browser(pos)
                         .expect(ERR_BOUNDS)
-                        .go_while(Direction::Left, |state| !state.is_text())
-                        .unwrap_or(pos),
+                        .go_while(Direction::Left, |state| !state.is_text())?
+                        .pos()
                 );
             }
             "j" => {
@@ -100,8 +100,8 @@ impl Editor {
                     self.raster
                         .browser(pos)
                         .expect(ERR_BOUNDS)
-                        .go_while(Direction::Right, |state| !state.is_text())
-                        .unwrap_or(pos),
+                        .go_while(Direction::Right, |state| !state.is_text())?
+                        .pos()
                 );
             }
             "i" => {
@@ -115,6 +115,7 @@ impl Editor {
             }
             _ => {}
         }
+        Ok(())
     }
 
     fn on_insert_key_press(&mut self, key: &str, _pos: Point, offset: usize) {

@@ -77,6 +77,7 @@ pub enum Direction {
     Down,
 }
 
+#[derive(Clone)]
 pub struct Browser<'a> {
     raster: &'a Raster,
     pos: Point,
@@ -90,7 +91,11 @@ impl<'a> Browser<'a> {
     /// Moves the Browser in a given direction while the predicate returns true or bounds were hit,
     /// resulting in an error. Calling [pos](Browser::pos) will return the position of the pixel
     /// for which the predicate returned false.
-    pub fn go_while<F>(&mut self, dir: Direction, mut predicate: F) -> Result<Point, &str>
+    pub fn go_while<F>(
+        mut self,
+        dir: Direction,
+        mut predicate: F,
+    ) -> Result<Browser<'a>, &'static str>
     where
         F: FnMut(PixelState) -> bool,
     {
@@ -111,20 +116,20 @@ impl<'a> Browser<'a> {
                 return Err("could not browse past bounds");
             }
         }
-        Ok(self.pos)
+        Ok(self)
     }
 
     pub fn go_count<F>(
-        &mut self,
+        self,
         dir: Direction,
         mut count: u32,
         mut predicate: F,
-    ) -> Result<Point, &str>
+    ) -> Result<Browser<'a>, &'static str>
     where
         F: FnMut(PixelState) -> bool,
     {
         if count == 0 {
-            Ok(self.pos)
+            Ok(self)
         } else {
             self.go_while(dir, move |state| {
                 if predicate(state) {
@@ -132,6 +137,24 @@ impl<'a> Browser<'a> {
                 }
                 count > 0
             })
+        }
+    }
+
+    pub fn go_no_wrap(mut self, dir: Direction) -> Result<Browser<'a>, &'static str> {
+        let new_pos = add_points(
+            self.pos,
+            match dir {
+                Left => (0, -1),
+                Right => (0, 1),
+                Up => (-1, 0),
+                Down => (1, 0),
+            },
+        );
+        if is_in_bounds(new_pos, self.raster.max) {
+            self.pos = new_pos;
+            Ok(self)
+        } else {
+            Err("hit bounds")
         }
     }
 }
@@ -163,6 +186,10 @@ pub fn linear_move(mut pos: Point, max: Point, offset: i32) -> Option<Point> {
 
 pub fn is_in_bounds(pos: Point, max: Point) -> bool {
     0 <= pos.0 && pos.0 < max.0 && 0 <= pos.1 && pos.1 < max.1
+}
+
+pub fn add_points(a: Point, b: Point) -> Point {
+    (a.0 + b.0, a.1 + b.1)
 }
 
 #[cfg(test)]
@@ -213,21 +240,25 @@ mod tests {
             vec![sample_text, sample_text, Empty], //
         ]);
 
-        let mut browser = raster.browser((1, 1)).unwrap();
         let mut count = 2;
-        browser
+        let browser = raster
+            .browser((1, 1))
+            .unwrap()
             .go_while(Direction::Right, move |state| {
                 (count -= 1, count > 0 && state.is_text()).1
             })
             .unwrap();
         assert_eq!(browser.pos(), (2, 0));
         let mut count = 2;
-        browser
-            .go_while(Direction::Left, move |state| {
-                (count -= 1, count > 0 && state.is_text()).1
-            })
-            .unwrap();
-        assert_eq!(browser.pos(), (1, 1));
+        assert_eq!(
+            browser
+                .go_while(Direction::Left, move |state| {
+                    (count -= 1, count > 0 && state.is_text()).1
+                })
+                .unwrap()
+                .pos(),
+            (1, 1)
+        );
     }
 
     #[test]
@@ -239,25 +270,36 @@ mod tests {
             vec![Empty, Empty, Empty, sample_text, sample_text],               //
         ]);
 
-        let mut browser = raster.browser((1, 3)).unwrap();
-        browser
+        let browser = raster.browser((1, 3)).unwrap();
+        let browser = browser
             .go_count(Direction::Right, 3, |state| state.is_text())
             .unwrap();
         assert_eq!(browser.pos(), (2, 4));
-        browser
+        let browser = browser
             .go_count(Direction::Left, 3, |state| state.is_text())
             .unwrap();
         assert_eq!(browser.pos(), (1, 3));
+    }
 
-        // Browser won't reset position if bounds was hit
-        assert!(browser
+    #[test]
+    fn browser_out_of_bounds() {
+        let sample_text = Text { id: 0, offset: 0 };
+        let raster = raster_from_vec(vec![
+            vec![Bullet(2), Filler(2), sample_text, sample_text], //
+            vec![Empty, Bullet(3), Filler(3), sample_text],       //
+            vec![Empty, Empty, Empty, sample_text],               //
+        ]);
+
+        assert!(raster
+            .browser((1, 1))
+            .unwrap()
             .go_count(Direction::Right, 100, |state| state.is_text())
             .is_err());
-        assert_eq!(browser.pos(), (2, 4));
-        assert!(browser
+        assert!(raster
+            .browser((1, 1))
+            .unwrap()
             .go_count(Direction::Left, 100, |state| state.is_text())
             .is_err());
-        assert_eq!(browser.pos(), (0, 0));
     }
 
     #[test]
@@ -267,30 +309,81 @@ mod tests {
             vec![text, text], //
             vec![text, text], //
         ]);
-        let mut browser = raster.browser((0, 1)).unwrap();
-        browser
-            .go_while(Direction::Left, |state| !state.is_text())
-            .unwrap();
-        assert_eq!(browser.pos(), (0, 0));
+        assert_eq!(
+            raster
+                .browser((0, 1))
+                .unwrap()
+                .go_while(Direction::Left, |state| !state.is_text())
+                .unwrap()
+                .pos(),
+            (0, 0)
+        );
 
         let raster = raster_from_vec(vec![
             vec![text, Empty], //
             vec![Empty, text], //
         ]);
-        let mut browser = raster.browser((0, 1)).unwrap();
-        browser
-            .go_while(Direction::Left, |state| !state.is_text())
-            .unwrap();
-        assert_eq!(browser.pos(), (0, 0));
+        assert_eq!(
+            raster
+                .browser((1, 1))
+                .unwrap()
+                .go_while(Direction::Left, |state| !state.is_text())
+                .unwrap()
+                .pos(),
+            (0, 0)
+        );
     }
 
     #[test]
-    fn browser_bounds() {
+    fn browser_get_bounds() {
         let raster = raster_from_vec(vec![
             vec![Empty, Empty], //
             vec![Empty, Empty], //
         ]);
 
         assert!(raster.browser((100, 100)).is_err());
+    }
+
+    #[test]
+    fn browser_go_no_wrap_test() -> Result<(), &'static str> {
+        let raster = raster_from_vec(vec![
+            vec![Empty, Empty, Empty], //
+            vec![Empty, Empty, Empty], //
+            vec![Empty, Empty, Empty], //
+        ]);
+
+        assert_eq!(
+            raster
+                .browser((1, 1))
+                .unwrap()
+                .go_no_wrap(Direction::Up)?
+                .pos(),
+            (0, 1)
+        );
+        assert_eq!(
+            raster
+                .browser((1, 1))
+                .unwrap()
+                .go_no_wrap(Direction::Left)?
+                .pos(),
+            (1, 0)
+        );
+        assert_eq!(
+            raster
+                .browser((1, 1))
+                .unwrap()
+                .go_no_wrap(Direction::Right)?
+                .pos(),
+            (1, 2)
+        );
+        assert_eq!(
+            raster
+                .browser((1, 1))
+                .unwrap()
+                .go_no_wrap(Direction::Down)?
+                .pos(),
+            (2, 1)
+        );
+        Ok(())
     }
 }
