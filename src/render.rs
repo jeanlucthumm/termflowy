@@ -245,7 +245,8 @@ fn render_content_slices_active(
     let mut insert_cursor = None;
     let mut offset = 0;
     for slice in slices {
-        if offset + slice.len() >= insert_index {
+        // If the insertion index is in the current slice, we have to record the cursor position
+        if offset <= insert_index && insert_index < offset + slice.len() {
             let before = &slice[0..insert_index - offset];
             win.addstr(before);
             insert_cursor = Some(win.get_yx());
@@ -265,11 +266,11 @@ fn render_content_slices_active(
             raster.push_multiple(PixelState::Filler(node_id), indentation_str.len() as u32);
         }
     }
-    if insert_index == 0 {
+    // Allows an index == len of content which means we are inserting at the end of content
+    if insert_index == offset {
         win.get_yx()
     } else {
         insert_cursor.expect("could not find cursor position in active node")
-        // (0, 0)
     }
 }
 
@@ -437,7 +438,7 @@ mod tests {
     fn render_content_slices_works() {
         let (mut exp, mut win, mut raster) = make_windows((10, 10));
         exp.addstr("hello");
-        render_content_slices(&mut win, vec!["hello"], 10, INDENTATION, 0, &mut raster);
+        render_content_slices(&mut win, vec!["hello"], 10, "  ", 0, &mut raster);
         assert_eq!(win, exp);
 
         let (mut exp, mut win, mut raster) = make_windows((10, 10));
@@ -452,6 +453,81 @@ mod tests {
         exp.addstr("12345678  ");
         win.addstr("  ");
         render_content_slices(&mut win, vec!["12345678"], 8, "  ", 0, &mut raster);
+        assert_eq!(win, exp);
+    }
+
+    #[test]
+    fn zero_index_simple_render_active() {
+        let (mut exp, mut win, mut raster) = make_windows((10, 10));
+        exp.addstr("hello");
+        assert_eq!(
+            render_content_slices_active(&mut win, vec!["hello"], 10, "  ", 0, 0, &mut raster),
+            (0, 0)
+        );
+        assert_eq!(win, exp);
+    }
+
+    #[test]
+    fn edge_index_simple_render_active() {
+        let (mut exp, mut win, mut raster) = make_windows((10, 10));
+        exp.addstr("hello");
+        // |insert_index| equal to len is allowed because during normal insertion, cursor is one
+        // past the length of the string
+        assert_eq!(
+            render_content_slices_active(&mut win, vec!["hello"], 10, "  ", 0, 5, &mut raster),
+            (0, 5)
+        );
+        assert_eq!(win, exp);
+    }
+
+    #[test]
+    fn nonzero_index_simple_render_active() {
+        let (mut exp, mut win, mut raster) = make_windows((10, 10));
+        exp.addstr("hello");
+        assert_eq!(
+            render_content_slices_active(&mut win, vec!["hello"], 10, "  ", 0, 2, &mut raster),
+            (0, 2)
+        );
+        assert_eq!(win, exp);
+    }
+
+    #[test]
+    fn zero_index_multiple_lines_render_active() {
+        let (mut exp, mut win, mut raster) = make_windows((10, 10));
+        exp.addstr("  12345678  1234");
+        win.addstr("  ");
+        assert_eq!(
+            render_content_slices_active(
+                &mut win,
+                vec!["12345678", "1234"],
+                8,
+                "  ",
+                0,
+                0,
+                &mut raster
+            ),
+            (0, 2)
+        );
+        assert_eq!(win, exp);
+    }
+
+    #[test]
+    fn edge_index_multiple_lines_render_active() {
+        let (mut exp, mut win, mut raster) = make_windows((10, 10));
+        exp.addstr("  12345678  1234");
+        win.addstr("  ");
+        assert_eq!(
+            render_content_slices_active(
+                &mut win,
+                vec!["12345678", "1234"],
+                8,
+                "  ",
+                0,
+                12,
+                &mut raster
+            ),
+            (1, 6)
+        );
         assert_eq!(win, exp);
     }
 }
