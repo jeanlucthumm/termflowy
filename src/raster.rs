@@ -88,6 +88,10 @@ impl<'a> Browser<'a> {
         self.pos
     }
 
+    pub fn state(&self) -> PixelState {
+        self.raster.get(self.pos).unwrap()
+    }
+
     /// Moves the Browser in a given direction while the predicate returns true or bounds were hit,
     /// resulting in an error. Calling [pos](Browser::pos) will return the position of the pixel
     /// for which the predicate returned false.
@@ -119,7 +123,26 @@ impl<'a> Browser<'a> {
         Ok(self)
     }
 
-    pub fn go_count<F>(
+    pub fn go_while_or_count<F>(
+        self,
+        dir: Direction,
+        mut count: u32,
+        mut predicate: F,
+    ) -> Result<Browser<'a>, &'static str>
+    where
+        F: FnMut(PixelState) -> bool,
+    {
+        if count == 0 {
+            Ok(self)
+        } else {
+            self.go_while(dir, move |state| {
+                count -= 1;
+                count > 0 && predicate(state)
+            })
+        }
+    }
+
+    pub fn go_until_count<F>(
         self,
         dir: Direction,
         mut count: u32,
@@ -156,6 +179,13 @@ impl<'a> Browser<'a> {
         } else {
             Err("hit bounds")
         }
+    }
+
+    pub fn map<F, T>(self, mut f: F) -> T
+    where
+        F: FnMut(Self) -> T,
+    {
+        f(self)
     }
 }
 
@@ -272,11 +302,11 @@ mod tests {
 
         let browser = raster.browser((1, 3)).unwrap();
         let browser = browser
-            .go_count(Direction::Right, 3, |state| state.is_text())
+            .go_until_count(Direction::Right, 3, |state| state.is_text())
             .unwrap();
         assert_eq!(browser.pos(), (2, 4));
         let browser = browser
-            .go_count(Direction::Left, 3, |state| state.is_text())
+            .go_until_count(Direction::Left, 3, |state| state.is_text())
             .unwrap();
         assert_eq!(browser.pos(), (1, 3));
     }
@@ -293,12 +323,12 @@ mod tests {
         assert!(raster
             .browser((1, 1))
             .unwrap()
-            .go_count(Direction::Right, 100, |state| state.is_text())
+            .go_until_count(Direction::Right, 100, |state| state.is_text())
             .is_err());
         assert!(raster
             .browser((1, 1))
             .unwrap()
-            .go_count(Direction::Left, 100, |state| state.is_text())
+            .go_until_count(Direction::Left, 100, |state| state.is_text())
             .is_err());
     }
 
