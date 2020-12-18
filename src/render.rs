@@ -104,19 +104,18 @@ pub fn subtree_render(
     insert_offset: usize,
     raster: &mut Raster,
 ) -> Option<(i32, i32)> {
-    let mut cursor_pos: Option<(i32, i32)> = None;
-    if node.is_active() {
-        cursor_pos = Some(render_active(
-            win,
-            node.content(),
-            indentation_lvl,
-            node.id(),
-            insert_offset,
-            raster,
-        ));
-    } else {
-        render_bullet(win, node.content(), indentation_lvl, node.id(), raster);
-    }
+    let mut cursor_pos = render_bullet(
+        win,
+        node.content(),
+        indentation_lvl,
+        node.id(),
+        if node.is_active() {
+            Some(insert_offset)
+        } else {
+            None
+        },
+        raster,
+    );
     raster.push_multiple(PixelState::Empty, clear_remaining_line(win) as u32);
 
     for child in node.children_iter() {
@@ -126,63 +125,126 @@ pub fn subtree_render(
     cursor_pos
 }
 
-fn render_active(
-    win: n::WINDOW,
-    content: &str,
-    indentation_lvl: usize,
-    node_id: i32,
-    insert_offset: usize,
-    raster: &mut Raster,
-) -> (i32, i32) {
-    let split_index = content
-        .len()
-        .checked_sub(insert_offset)
-        .expect("offset should not be larger than len, raster generation is probably wrong");
-    let before = &content[0..split_index];
-    let after = &content[split_index..content.len()];
-    render_bullet(win, before, indentation_lvl, node_id, raster);
-    let pos = get_yx(win);
-    if !after.is_empty() {
-        n::waddstr(win, &after);
-        for i in 0..after.len() {
-            raster.push(PixelState::Text {
-                id: node_id,
-                offset: i + split_index,
-            });
-        }
-    }
-    pos
-}
-
 fn render_bullet(
     win: n::WINDOW,
     content: &str,
     indentation_lvl: usize,
     node_id: i32,
+    insert_offset: Option<usize>,
     raster: &mut Raster,
-) {
-    n::waddstr(
-        win,
-        &format!(
-            "{}{} {}",
-            INDENTATION.repeat(indentation_lvl as usize),
-            CHAR_BULLET,
-            content
-        ),
-    );
-
-    raster.push_multiple(
-        PixelState::Empty,
-        (INDENTATION.len() as usize * indentation_lvl) as u32,
-    );
+) -> Option<(i32, i32)> {
+    let mut indentation_str = INDENTATION.repeat(indentation_lvl as usize);
+    n::waddstr(win, &format!("{}{} ", indentation_str, CHAR_BULLET));
+    raster.push_multiple(PixelState::Empty, indentation_str.len() as u32);
     raster.push(PixelState::Bullet(node_id));
     raster.push(PixelState::Filler(node_id));
-    for i in 0..content.len() {
-        raster.push(PixelState::Text {
-            id: node_id,
-            offset: i,
-        });
+
+    indentation_str.push_str("  "); // for filler and bullet
+    let limit = (get_max_yx(win).1 - indentation_str.len() as i32) as usize;
+    if let Some(insert_offset) = insert_offset {
+        let insert_index = content
+            .len()
+            .checked_sub(insert_offset)
+            .expect("offset should not be larger than len, raster generation is probably wrong");
+        Some(render_content_slices_active(
+            win,
+            split_every_n(content, limit),
+            limit,
+            &indentation_str,
+            node_id,
+            insert_index,
+            raster,
+        ))
+    } else {
+        render_content_slices(
+            win,
+            split_every_n(content, limit),
+            limit,
+            &indentation_str,
+            node_id,
+            raster,
+        );
+        None
     }
+}
+
+fn render_content_slices(
+    win: n::WINDOW,
+    slices: Vec<&str>,
+    limit: usize,
+    indentation_str: &str,
+    node_id: i32,
+    raster: &mut Raster,
+) {
+    let mut offset = 0;
+    for slice in slices {
+        n::waddstr(win, slice);
+        for _ in 0..slice.len() {
+            raster.push(PixelState::Text {
+                id: node_id,
+                offset,
+            });
+            offset += 1;
+        }
+        if slice.len() == limit {
+            n::waddstr(win, &indentation_str);
+            raster.push_multiple(PixelState::Filler(node_id), indentation_str.len() as u32);
+        }
+    }
+}
+
+fn render_content_slices_active(
+    win: n::WINDOW,
+    slices: Vec<&str>,
+    limit: usize,
+    indentation_str: &str,
+    node_id: i32,
+    insert_index: usize,
+    raster: &mut Raster,
+) -> (i32, i32) {
+    let mut insert_cursor = None;
+    let mut offset = 0;
+    for slice in slices {
+        // n::waddstr(win,&format!("offset: {}, len: {}, index: {}", offset, slice.len(), insert_index)); // DEBUG
+        if offset + slice.len() >= insert_index {
+            let before = &slice[0..insert_index - offset];
+            n::waddstr(win, before);
+            insert_cursor = Some(get_yx(win));
+            n::waddstr(win, &slice[insert_index - offset..slice.len()]);
+        } else {
+            n::waddstr(win, slice);
+        }
+        for _ in 0..slice.len() {
+            raster.push(PixelState::Text {
+                id: node_id,
+                offset,
+            });
+            offset += 1;
+        }
+        if slice.len() == limit {
+            n::waddstr(win, &indentation_str);
+            raster.push_multiple(PixelState::Filler(node_id), indentation_str.len() as u32);
+        }
+    }
+    if insert_index == 0 {
+        get_yx(win)
+    } else {
+        insert_cursor.expect("could not find cursor position in active node")
+        // (0, 0)
+    }
+}
+
+fn split_every_n(string: &str, n: usize) -> Vec<&str> {
+    let mut start = 0;
+    let mut end = n;
+    let mut slices = vec![];
+    while end < string.len() {
+        slices.push(&string[start..end]);
+        start = end;
+        end += n;
+    }
+    slices.push(&string[start..string.len()]);
+    slices
 }
 
 pub fn cursor_render(win: n::WINDOW, pos: (i32, i32)) {
@@ -213,5 +275,17 @@ pub mod debug {
         n::box_(win, 0, 0);
         n::wrefresh(win);
         win
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_indentation_test() {
+        assert_eq!(split_every_n("12345", 3), ["123", "45"]);
+        assert_eq!(split_every_n("123456", 2), ["12", "34", "56"]);
+        assert_eq!(split_every_n("123456", 10), ["123456"]);
     }
 }
