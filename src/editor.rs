@@ -1,6 +1,6 @@
 use ncurses as n;
 
-use crate::raster::{Direction, PixelState, Raster};
+use crate::raster::{Browser, Direction, PixelState, Raster};
 use crate::tree;
 use crate::{render, PanelUpdate};
 use render::Point;
@@ -86,14 +86,26 @@ impl Editor {
                         .browser(pos)
                         .expect(ERR_BOUNDS)
                         .go_while(Direction::Left, |state| !state.is_text())?
-                        .pos()
+                        .pos(),
                 );
             }
             "j" => {
-                self.cursor = Command(render::check_bounds(self.win, pos, (1, 0)).unwrap_or(pos))
+                self.cursor = Command(
+                    self.raster
+                        .browser(pos)
+                        .expect(ERR_BOUNDS)
+                        .go_no_wrap(Direction::Down)?
+                        .map(|b| find_left_text(b, pos.1 as u32))?,
+                );
             }
             "k" => {
-                self.cursor = Command(render::check_bounds(self.win, pos, (-1, 0)).unwrap_or(pos))
+                self.cursor = Command(
+                    self.raster
+                        .browser(pos)
+                        .expect(ERR_BOUNDS)
+                        .go_no_wrap(Direction::Up)?
+                        .map(|b| find_left_text(b, pos.1 as u32))?,
+                );
             }
             "l" => {
                 self.cursor = Command(
@@ -101,7 +113,7 @@ impl Editor {
                         .browser(pos)
                         .expect(ERR_BOUNDS)
                         .go_while(Direction::Right, |state| !state.is_text())?
-                        .pos()
+                        .pos(),
                 );
             }
             "i" => {
@@ -152,6 +164,21 @@ impl Editor {
                 content.insert_str(content.len() - offset, &key);
             }
         };
+    }
+}
+
+fn find_left_text(b: Browser, col: u32) -> Result<Point, &str> {
+    if b.state().is_text() {
+        Ok(b.pos())
+    } else {
+        b.go_while_or_count(Direction::Left, col, |state| !state.is_text())?
+            .map(|b| {
+                if b.state().is_text() {
+                    Ok(b.pos())
+                } else {
+                    Err("no text on target line")
+                }
+            })
     }
 }
 
