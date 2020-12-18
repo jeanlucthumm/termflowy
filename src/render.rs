@@ -306,6 +306,86 @@ pub mod debug {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::raster::{is_in_bounds, linear_move};
+    use std::fmt;
+    use std::fmt::{Display, Formatter};
+
+    struct TestWindow {
+        max: Point,
+        pos: Point,
+        screen: Vec<Vec<char>>,
+    }
+
+    impl TestWindow {
+        fn new(max: Point) -> TestWindow {
+            TestWindow {
+                max,
+                pos: (0, 0),
+                screen: vec![vec![' '; max.1 as usize]; max.0 as usize],
+            }
+        }
+    }
+
+    impl Display for TestWindow {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            let mut buffer = String::new();
+            let horizontal = "─".repeat(self.screen[0].len());
+            buffer.push('┌');
+            buffer.push_str(&horizontal);
+            buffer.push_str("┐\n");
+            for row in &self.screen {
+                buffer.push('│');
+                for c in row {
+                    buffer.push(*c);
+                }
+                buffer.push_str("│\n");
+            }
+            buffer.push('└');
+            buffer.push_str(&horizontal);
+            buffer.push_str("┘\n");
+            write!(
+                f,
+                "TestWindow max: {:?} pos: {:?}\n{}",
+                self.max, self.pos, &buffer
+            )
+        }
+    }
+
+    impl Window for TestWindow {
+        fn get_max_yx(&self) -> (i32, i32) {
+            self.max
+        }
+
+        fn get_yx(&self) -> (i32, i32) {
+            self.pos
+        }
+
+        fn move_cursor(&mut self, pos: (i32, i32)) {
+            self.pos = pos;
+        }
+
+        fn addstr(&mut self, s: &str) {
+            for c in s.chars() {
+                self.addch(c);
+            }
+        }
+
+        fn addch(&mut self, c: char) {
+            self.screen[self.pos.0 as usize][self.pos.1 as usize] = c;
+            self.pos = linear_move(self.pos, self.max, 1)
+                .expect(&format!("For character: {}\n{}", c, &self));
+        }
+
+        fn move_addstr(&mut self, pos: (i32, i32), s: &str) {
+            if !is_in_bounds(pos, self.max) {
+                panic!(&format!("For pos: {:?}\n{}", pos, &self));
+            }
+            self.pos = pos;
+            self.addstr(s);
+        }
+
+        fn refresh(&self) {}
+    }
 
     #[test]
     fn add_indentation_test() {

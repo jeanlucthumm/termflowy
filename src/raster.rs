@@ -12,6 +12,7 @@ impl Raster {
     // max is not inclusive
     pub fn new(max: (i32, i32)) -> Raster {
         Raster {
+            // TODO figure out if this is a bug
             map: vec![Vec::with_capacity((max.1 + 1) as usize); (max.0 + 1) as usize],
             max,
             current: (0, -1),
