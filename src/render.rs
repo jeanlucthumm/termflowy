@@ -309,6 +309,8 @@ mod tests {
     use std::fmt;
     use std::fmt::{Debug, Display, Formatter};
 
+    const STARTER: &str = "• ";
+
     struct TestWindow {
         max: Point,
         pos: Point,
@@ -341,6 +343,10 @@ mod tests {
             buffer.push_str(&horizontal);
             buffer.push_str("┘\n");
             buffer
+        }
+
+        fn print(&self) {
+            println!("{}", self);
         }
     }
 
@@ -400,7 +406,7 @@ mod tests {
 
     impl PartialEq for TestWindow {
         fn eq(&self, other: &Self) -> bool {
-            if self.max != other.max {
+            if self.max != other.max || self.pos != other.pos {
                 return false;
             }
             for i in 0..self.max.0 {
@@ -416,10 +422,36 @@ mod tests {
         }
     }
 
+    fn make_windows(max: Point) -> (TestWindow, TestWindow, Raster) {
+        (TestWindow::new(max), TestWindow::new(max), Raster::new(max))
+    }
+
     #[test]
     fn add_indentation_test() {
         assert_eq!(split_every_n("12345", 3), ["123", "45"]);
         assert_eq!(split_every_n("123456", 2), ["12", "34", "56"]);
         assert_eq!(split_every_n("123456", 10), ["123456"]);
+    }
+
+    #[test]
+    fn render_content_slices_works() {
+        let (mut exp, mut win, mut raster) = make_windows((10, 10));
+        exp.addstr("hello");
+        render_content_slices(&mut win, vec!["hello"], 10, INDENTATION, 0, &mut raster);
+        assert_eq!(win, exp);
+
+        let (mut exp, mut win, mut raster) = make_windows((10, 10));
+        exp.addstr("  ");
+        exp.addstr("12345678  9123");
+        win.addstr("  ");
+        render_content_slices(&mut win, vec!["12345678", "9123"], 8, "  ", 0, &mut raster);
+        assert_eq!(win, exp);
+
+        let (mut exp, mut win, mut raster) = make_windows((10, 10));
+        exp.addstr("  ");
+        exp.addstr("12345678  ");
+        win.addstr("  ");
+        render_content_slices(&mut win, vec!["12345678"], 8, "  ", 0, &mut raster);
+        assert_eq!(win, exp);
     }
 }
