@@ -245,7 +245,6 @@ fn render_content_slices_active(
     let mut insert_cursor = None;
     let mut offset = 0;
     for slice in slices {
-        // n::waddstr(win,&format!("offset: {}, len: {}, index: {}", offset, slice.len(), insert_index)); // DEBUG
         if offset + slice.len() >= insert_index {
             let before = &slice[0..insert_index - offset];
             win.addstr(before);
@@ -308,7 +307,7 @@ mod tests {
     use super::*;
     use crate::raster::{is_in_bounds, linear_move};
     use std::fmt;
-    use std::fmt::{Display, Formatter};
+    use std::fmt::{Debug, Display, Formatter};
 
     struct TestWindow {
         max: Point,
@@ -324,10 +323,8 @@ mod tests {
                 screen: vec![vec![' '; max.1 as usize]; max.0 as usize],
             }
         }
-    }
 
-    impl Display for TestWindow {
-        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        fn to_string(&self) -> String {
             let mut buffer = String::new();
             let horizontal = "─".repeat(self.screen[0].len());
             buffer.push('┌');
@@ -343,11 +340,25 @@ mod tests {
             buffer.push('└');
             buffer.push_str(&horizontal);
             buffer.push_str("┘\n");
+            buffer
+        }
+    }
+
+    impl Display for TestWindow {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
             write!(
                 f,
                 "TestWindow max: {:?} pos: {:?}\n{}",
-                self.max, self.pos, &buffer
+                self.max,
+                self.pos,
+                &self.to_string()
             )
+        }
+    }
+
+    impl Debug for TestWindow {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", &self.to_string())
         }
     }
 
@@ -378,13 +389,31 @@ mod tests {
 
         fn move_addstr(&mut self, pos: (i32, i32), s: &str) {
             if !is_in_bounds(pos, self.max) {
-                panic!(&format!("For pos: {:?}\n{}", pos, &self));
+                panic!("For pos: {:?}\n{}", pos, &self);
             }
             self.pos = pos;
             self.addstr(s);
         }
 
         fn refresh(&self) {}
+    }
+
+    impl PartialEq for TestWindow {
+        fn eq(&self, other: &Self) -> bool {
+            if self.max != other.max {
+                return false;
+            }
+            for i in 0..self.max.0 {
+                for j in 0..self.max.1 {
+                    let i = i as usize;
+                    let j = j as usize;
+                    if self.screen[i][j] != other.screen[i][j] {
+                        return false;
+                    }
+                }
+            }
+            true
+        }
     }
 
     #[test]
