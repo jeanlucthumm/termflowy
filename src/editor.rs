@@ -89,27 +89,17 @@ impl Editor {
                     .pos();
                 self.cursor = Command(pos, pos.1);
             }
-            "j" => {
+            "j" | "k" => {
+                let initial_dir = if key == "j" {
+                    Direction::Down
+                } else {
+                    Direction::Up
+                };
                 let pos = self
                     .raster
                     .browser(pos)
                     .expect(ERR_BOUNDS)
-                    .go_no_wrap(Direction::Down, 1)?
-                    .go_no_wrap(
-                        Direction::Right,
-                        (col as u32)
-                            .checked_sub(pos.1 as u32)
-                            .ok_or("y pos should never be bigger than col")?,
-                    )?
-                    .map(|b| find_left_text(b, pos.1 as u32))?;
-                self.cursor = Command(pos, col);
-            }
-            "k" => {
-                let pos = self
-                    .raster
-                    .browser(pos)
-                    .expect(ERR_BOUNDS)
-                    .go_no_wrap(Direction::Up, 1)?
+                    .go_no_wrap(initial_dir, 1)?
                     .go_no_wrap(
                         Direction::Right,
                         (col as u32)
