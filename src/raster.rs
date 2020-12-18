@@ -163,14 +163,15 @@ impl<'a> Browser<'a> {
         }
     }
 
-    pub fn go_no_wrap(mut self, dir: Direction) -> Result<Browser<'a>, &'static str> {
+    pub fn go_no_wrap(mut self, dir: Direction, times: u32) -> Result<Browser<'a>, &'static str> {
+        let times = times as i32;
         let new_pos = add_points(
             self.pos,
             match dir {
-                Left => (0, -1),
-                Right => (0, 1),
-                Up => (-1, 0),
-                Down => (1, 0),
+                Left => (0, -times),
+                Right => (0, times),
+                Up => (-times, 0),
+                Down => (times, 0),
             },
         );
         if is_in_bounds(new_pos, self.raster.max) {
@@ -386,7 +387,7 @@ mod tests {
             raster
                 .browser((1, 1))
                 .unwrap()
-                .go_no_wrap(Direction::Up)?
+                .go_no_wrap(Direction::Up, 1)?
                 .pos(),
             (0, 1)
         );
@@ -394,7 +395,7 @@ mod tests {
             raster
                 .browser((1, 1))
                 .unwrap()
-                .go_no_wrap(Direction::Left)?
+                .go_no_wrap(Direction::Left, 1)?
                 .pos(),
             (1, 0)
         );
@@ -402,7 +403,7 @@ mod tests {
             raster
                 .browser((1, 1))
                 .unwrap()
-                .go_no_wrap(Direction::Right)?
+                .go_no_wrap(Direction::Right, 1)?
                 .pos(),
             (1, 2)
         );
@@ -410,7 +411,7 @@ mod tests {
             raster
                 .browser((1, 1))
                 .unwrap()
-                .go_no_wrap(Direction::Down)?
+                .go_no_wrap(Direction::Down, 1)?
                 .pos(),
             (2, 1)
         );

@@ -31,7 +31,7 @@ impl Editor {
         let (raster, cursor) = render::tree_render(win, tree.root_iter(), 0, 0);
         let cursor = match cursor {
             Some(pos) => Insert(pos, 0),
-            None => Command((0, 0)),
+            None => Command((0, 0), 0),
         };
         render::cursor_render(win, cursor.pos());
         Editor {
@@ -44,8 +44,8 @@ impl Editor {
 
     pub fn update(&mut self, key: &str) -> PanelUpdate {
         match self.cursor {
-            Command(pos) => {
-                self.on_command_key_press(&key, pos);
+            Command(pos, col) => {
+                self.on_command_key_press(&key, pos, col);
                 let (raster, _) = render::tree_render(self.win, self.bullet_tree.root_iter(), 0, 0);
                 self.raster = raster;
             }
@@ -54,7 +54,7 @@ impl Editor {
                 let result = render::tree_render(self.win, self.bullet_tree.root_iter(), 0, offset);
                 let cursor = match result.1 {
                     Some(pos) => Insert(pos, offset),
-                    None => Command((0, 0)),
+                    None => Command((0, 0), 0),
                 };
                 self.raster = result.0;
                 if let Insert(_, _) = self.cursor {
@@ -66,7 +66,7 @@ impl Editor {
         PanelUpdate {
             should_render: true,
             should_quit: false,
-            status_msg: if let Command(pos) = self.cursor {
+            status_msg: if let Command(pos, _) = self.cursor {
                 format!("{:?}", self.raster.get(pos).unwrap())
             } else {
                 String::new()
@@ -78,43 +78,55 @@ impl Editor {
         self.cursor
     }
 
-    fn on_command_key_press(&mut self, key: &str, pos: Point) -> Result<(), &str> {
+    fn on_command_key_press(&mut self, key: &str, pos: Point, col: i32) -> Result<(), &str> {
         match key {
             "h" => {
-                self.cursor = Command(
-                    self.raster
-                        .browser(pos)
-                        .expect(ERR_BOUNDS)
-                        .go_while(Direction::Left, |state| !state.is_text())?
-                        .pos(),
-                );
+                let pos = self
+                    .raster
+                    .browser(pos)
+                    .expect(ERR_BOUNDS)
+                    .go_while(Direction::Left, |state| !state.is_text())?
+                    .pos();
+                self.cursor = Command(pos, pos.1);
             }
             "j" => {
-                self.cursor = Command(
-                    self.raster
-                        .browser(pos)
-                        .expect(ERR_BOUNDS)
-                        .go_no_wrap(Direction::Down)?
-                        .map(|b| find_left_text(b, pos.1 as u32))?,
-                );
+                let pos = self
+                    .raster
+                    .browser(pos)
+                    .expect(ERR_BOUNDS)
+                    .go_no_wrap(Direction::Down, 1)?
+                    .go_no_wrap(
+                        Direction::Right,
+                        (col as u32)
+                            .checked_sub(pos.1 as u32)
+                            .ok_or("y pos should never be bigger than col")?,
+                    )?
+                    .map(|b| find_left_text(b, pos.1 as u32))?;
+                self.cursor = Command(pos, col);
             }
             "k" => {
-                self.cursor = Command(
-                    self.raster
-                        .browser(pos)
-                        .expect(ERR_BOUNDS)
-                        .go_no_wrap(Direction::Up)?
-                        .map(|b| find_left_text(b, pos.1 as u32))?,
-                );
+                let pos = self
+                    .raster
+                    .browser(pos)
+                    .expect(ERR_BOUNDS)
+                    .go_no_wrap(Direction::Up, 1)?
+                    .go_no_wrap(
+                        Direction::Right,
+                        (col as u32)
+                            .checked_sub(pos.1 as u32)
+                            .ok_or("y pos should never be bigger than col")?,
+                    )?
+                    .map(|b| find_left_text(b, pos.1 as u32))?;
+                self.cursor = Command(pos, col);
             }
             "l" => {
-                self.cursor = Command(
-                    self.raster
-                        .browser(pos)
-                        .expect(ERR_BOUNDS)
-                        .go_while(Direction::Right, |state| !state.is_text())?
-                        .pos(),
-                );
+                let pos = self
+                    .raster
+                    .browser(pos)
+                    .expect(ERR_BOUNDS)
+                    .go_while(Direction::Right, |state| !state.is_text())?
+                    .pos();
+                self.cursor = Command(pos, pos.1);
             }
             "i" => {
                 if let Some(PixelState::Text { id, offset }) = self.raster.get(self.cursor.pos()) {
@@ -157,7 +169,7 @@ impl Editor {
                 }
             }
             "^C" => {
-                self.cursor = Command(self.cursor.pos());
+                self.cursor = Command(self.cursor.pos(), self.cursor().pos().1);
             }
             _ => {
                 let content = self.bullet_tree.get_mut_active_content();
@@ -184,7 +196,8 @@ fn find_left_text(b: Browser, col: u32) -> Result<Point, &str> {
 
 #[derive(Copy, Clone)]
 pub enum CursorState {
-    Command(Point),
+    // i32 is the 'x' of the last horizontal move
+    Command(Point, i32),
     // usize is how many chars away from last char in content
     Insert(Point, usize),
 }
@@ -192,7 +205,7 @@ pub enum CursorState {
 impl CursorState {
     pub fn pos(&self) -> Point {
         match self {
-            Command(pos) | Insert(pos, _) => *pos,
+            Command(pos, _) | Insert(pos, _) => *pos,
         }
     }
 }
