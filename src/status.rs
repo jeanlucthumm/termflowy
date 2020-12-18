@@ -1,5 +1,3 @@
-use ncurses as n;
-
 use crate::editor::CursorState;
 use crate::render;
 use crate::render::Window;

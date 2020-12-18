@@ -1,11 +1,10 @@
-use ncurses as n;
-
-use crate::raster::{Browser, Direction, PixelState, Raster};
-use crate::tree;
-use crate::{render, PanelUpdate};
-use render::Point;
 use CursorState::*;
+use render::Point;
+
+use crate::{PanelUpdate, render};
+use crate::raster::{Browser, Direction, PixelState, Raster};
 use crate::render::Window;
+use crate::tree;
 
 const ERR_BOUNDS: &str = "cursor position was out of bounds";
 
@@ -46,7 +45,7 @@ impl Editor {
     pub fn update(&mut self, key: &str) -> PanelUpdate {
         match self.cursor {
             Command(pos, col) => {
-                self.on_command_key_press(&key, pos, col);
+                let _ = self.on_command_key_press(&key, pos, col);
                 let (raster, _) = render::tree_render(&mut *self.win, self.bullet_tree.root_iter(), 0, 0);
                 self.raster = raster;
             }
