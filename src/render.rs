@@ -11,14 +11,57 @@ const INDENTATION: &str = "  ";
 
 pub type Point = (i32, i32);
 
-#[derive(Clone, Copy)]
 pub struct WindowStore {
-    pub editor: n::WINDOW,
-    pub status: n::WINDOW,
+    pub editor: Box<dyn Window>,
+    pub status: Box<dyn Window>,
 }
 
-pub fn create_window(h: i32, w: i32, y: i32, x: i32) -> n::WINDOW {
-    n::newwin(h, w, y, x)
+pub trait Window {
+    fn get_max_yx(&self) -> Point;
+    fn get_yx(&self) -> Point;
+    fn move_cursor(&mut self, pos: Point);
+    fn addstr(&mut self, s: &str);
+    fn addch(&mut self, c: char);
+    fn move_addstr(&mut self, pos: Point, s: &str);
+    fn refresh(&self);
+}
+
+pub struct NCurses(pub n::WINDOW);
+
+impl Window for NCurses {
+    fn get_max_yx(&self) -> (i32, i32) {
+        let mut y: i32 = 0;
+        let mut x: i32 = 0;
+        n::getmaxyx(self.0, &mut y, &mut x);
+        (y, x)
+    }
+
+    fn get_yx(&self) -> (i32, i32) {
+        let mut y: i32 = 0;
+        let mut x: i32 = 0;
+        n::getyx(self.0, &mut y, &mut x);
+        (y, x)
+    }
+
+    fn move_cursor(&mut self, pos: (i32, i32)) {
+        n::wmove(self.0, pos.0, pos.1);
+    }
+
+    fn addstr(&mut self, s: &str) {
+        n::waddstr(self.0, s);
+    }
+
+    fn addch(&mut self, c: char) {
+        n::waddch(self.0, c as u32);
+    }
+
+    fn move_addstr(&mut self, pos: (i32, i32), s: &str) {
+        n::mvwaddstr(self.0, pos.0, pos.1, s);
+    }
+
+    fn refresh(&self) {
+        n::wrefresh(self.0);
+    }
 }
 
 pub fn setup_ncurses() {
@@ -33,62 +76,59 @@ pub fn setup_ncurses() {
     n::noecho();
 }
 
-pub fn get_max_yx(win: n::WINDOW) -> (i32, i32) {
+pub fn get_screen_bounds() -> (i32, i32) {
     let mut y: i32 = 0;
     let mut x: i32 = 0;
-    n::getmaxyx(win, &mut y, &mut x);
+    n::getmaxyx(n::stdscr(), &mut y, &mut x);
     (y, x)
 }
 
-pub fn get_yx(win: n::WINDOW) -> (i32, i32) {
-    let mut y: i32 = 0;
-    let mut x: i32 = 0;
-    n::getyx(win, &mut y, &mut x);
-    (y, x)
+pub fn create_window(h: i32, w: i32, y: i32, x: i32) -> n::WINDOW {
+    n::newwin(h, w, y, x)
 }
 
-pub fn clear_remaining(win: n::WINDOW) -> usize {
-    let size = get_max_yx(win);
-    let pos = get_yx(win);
+pub fn clear_remaining(win: &mut dyn Window) -> usize {
+    let size = win.get_max_yx();
+    let pos = win.get_yx();
 
     let remaining = (size.1 - pos.1) + (size.0 - pos.0 - 1) * (size.1);
     if remaining.is_negative() {
         panic!("tried to clear a negative amount on line");
     }
     for _ in 0..remaining {
-        n::waddch(win, ' ' as u32);
+        win.addch(' ');
     }
     remaining as usize
 }
 
-pub fn clear_remaining_line(win: n::WINDOW) -> usize {
-    let size = get_max_yx(win);
-    let pos = get_yx(win);
+pub fn clear_remaining_line(win: &mut dyn Window) -> usize {
+    let size = win.get_max_yx();
+    let pos = win.get_yx();
 
     let remaining_line = size.1 - pos.1;
     if remaining_line.is_negative() {
         panic!("tried to clear a negative amount on line");
     }
     for _ in 0..remaining_line {
-        n::waddch(win, ' ' as u32);
+        win.addch(' ');
     }
     remaining_line as usize
 }
 
-pub fn addstr_right_aligned(win: n::WINDOW, txt: &str) {
-    let bounds = get_max_yx(win);
-    n::mvwaddstr(win, 0, bounds.1 - txt.len() as i32, txt);
+pub fn addstr_right_aligned(win: &mut dyn Window, txt: &str) {
+    let bounds = win.get_max_yx();
+    win.move_addstr((0, bounds.1 - txt.len() as i32), txt);
 }
 
 pub fn tree_render(
-    win: n::WINDOW,
+    win: &mut dyn Window,
     node: tree::NodeIterator,
     indentation_lvl: usize,
     insert_offset: usize,
 ) -> (Raster, Option<(i32, i32)>) {
-    n::wmove(win, 0, 0);
+    win.move_cursor((0, 0));
     let mut cursor_pos: Option<(i32, i32)> = None;
-    let mut raster = Raster::new(get_max_yx(win));
+    let mut raster = Raster::new(win.get_max_yx());
     for child in node.children_iter() {
         let subtree_pos = subtree_render(win, child, indentation_lvl, insert_offset, &mut raster);
         cursor_pos = cursor_pos.or(subtree_pos);
@@ -98,7 +138,7 @@ pub fn tree_render(
 }
 
 pub fn subtree_render(
-    win: n::WINDOW,
+    win: &mut dyn Window,
     node: tree::NodeIterator,
     indentation_lvl: usize,
     insert_offset: usize,
@@ -126,7 +166,7 @@ pub fn subtree_render(
 }
 
 fn render_bullet(
-    win: n::WINDOW,
+    win: &mut dyn Window,
     content: &str,
     indentation_lvl: usize,
     node_id: i32,
@@ -134,13 +174,13 @@ fn render_bullet(
     raster: &mut Raster,
 ) -> Option<(i32, i32)> {
     let mut indentation_str = INDENTATION.repeat(indentation_lvl as usize);
-    n::waddstr(win, &format!("{}{} ", indentation_str, CHAR_BULLET));
+    win.addstr(&format!("{}{} ", indentation_str, CHAR_BULLET));
     raster.push_multiple(PixelState::Empty, indentation_str.len() as u32);
     raster.push(PixelState::Bullet(node_id));
     raster.push(PixelState::Filler(node_id));
 
     indentation_str.push_str("  "); // for filler and bullet
-    let limit = (get_max_yx(win).1 - indentation_str.len() as i32) as usize;
+    let limit = (win.get_max_yx().1 - indentation_str.len() as i32) as usize;
     if let Some(insert_offset) = insert_offset {
         let insert_index = content
             .len()
@@ -169,7 +209,7 @@ fn render_bullet(
 }
 
 fn render_content_slices(
-    win: n::WINDOW,
+    win: &mut dyn Window,
     slices: Vec<&str>,
     limit: usize,
     indentation_str: &str,
@@ -178,7 +218,7 @@ fn render_content_slices(
 ) {
     let mut offset = 0;
     for slice in slices {
-        n::waddstr(win, slice);
+        win.addstr(slice);
         for _ in 0..slice.len() {
             raster.push(PixelState::Text {
                 id: node_id,
@@ -187,14 +227,14 @@ fn render_content_slices(
             offset += 1;
         }
         if slice.len() == limit {
-            n::waddstr(win, &indentation_str);
+            win.addstr(&indentation_str);
             raster.push_multiple(PixelState::Filler(node_id), indentation_str.len() as u32);
         }
     }
 }
 
 fn render_content_slices_active(
-    win: n::WINDOW,
+    win: &mut dyn Window,
     slices: Vec<&str>,
     limit: usize,
     indentation_str: &str,
@@ -208,11 +248,11 @@ fn render_content_slices_active(
         // n::waddstr(win,&format!("offset: {}, len: {}, index: {}", offset, slice.len(), insert_index)); // DEBUG
         if offset + slice.len() >= insert_index {
             let before = &slice[0..insert_index - offset];
-            n::waddstr(win, before);
-            insert_cursor = Some(get_yx(win));
-            n::waddstr(win, &slice[insert_index - offset..slice.len()]);
+            win.addstr(before);
+            insert_cursor = Some(win.get_yx());
+            win.addstr(&slice[insert_index - offset..slice.len()]);
         } else {
-            n::waddstr(win, slice);
+            win.addstr(slice);
         }
         for _ in 0..slice.len() {
             raster.push(PixelState::Text {
@@ -222,12 +262,12 @@ fn render_content_slices_active(
             offset += 1;
         }
         if slice.len() == limit {
-            n::waddstr(win, &indentation_str);
+            win.addstr(&indentation_str);
             raster.push_multiple(PixelState::Filler(node_id), indentation_str.len() as u32);
         }
     }
     if insert_index == 0 {
-        get_yx(win)
+        win.get_yx()
     } else {
         insert_cursor.expect("could not find cursor position in active node")
         // (0, 0)
@@ -245,21 +285,6 @@ fn split_every_n(string: &str, n: usize) -> Vec<&str> {
     }
     slices.push(&string[start..string.len()]);
     slices
-}
-
-pub fn cursor_render(win: n::WINDOW, pos: (i32, i32)) {
-    n::wmove(win, pos.0, pos.1);
-}
-
-pub fn check_bounds(win: n::WINDOW, mut pos: Point, offset: Point) -> Option<Point> {
-    let max = get_max_yx(win);
-    pos.0 += offset.0;
-    pos.1 += offset.1;
-    if pos.0 >= max.0 || pos.0 < 0 || pos.1 >= max.1 || pos.1 < 0 {
-        None
-    } else {
-        Some(pos)
-    }
 }
 
 pub mod debug {

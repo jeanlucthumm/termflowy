@@ -5,6 +5,7 @@ use crate::tree;
 use crate::{render, PanelUpdate};
 use render::Point;
 use CursorState::*;
+use crate::render::Window;
 
 const ERR_BOUNDS: &str = "cursor position was out of bounds";
 
@@ -20,20 +21,20 @@ impl tree::IdGenerator for IdGen {
 
 pub struct Editor {
     bullet_tree: tree::Tree,
-    win: n::WINDOW,
+    win: Box<dyn Window>,
     cursor: CursorState,
     raster: Raster,
 }
 
 impl Editor {
-    pub fn new(win: n::WINDOW) -> Editor {
+    pub fn new(mut win: Box<dyn Window>) -> Editor {
         let tree = tree::Tree::new(Box::new(IdGen { current: 1 }));
-        let (raster, cursor) = render::tree_render(win, tree.root_iter(), 0, 0);
+        let (raster, cursor) = render::tree_render(&mut *win, tree.root_iter(), 0, 0);
         let cursor = match cursor {
             Some(pos) => Insert(pos, 0),
             None => Command((0, 0), 0),
         };
-        render::cursor_render(win, cursor.pos());
+        win.move_cursor(cursor.pos());
         Editor {
             bullet_tree: tree,
             win,
@@ -46,12 +47,12 @@ impl Editor {
         match self.cursor {
             Command(pos, col) => {
                 self.on_command_key_press(&key, pos, col);
-                let (raster, _) = render::tree_render(self.win, self.bullet_tree.root_iter(), 0, 0);
+                let (raster, _) = render::tree_render(&mut *self.win, self.bullet_tree.root_iter(), 0, 0);
                 self.raster = raster;
             }
             Insert(pos, offset) => {
                 self.on_insert_key_press(&key, pos, offset);
-                let result = render::tree_render(self.win, self.bullet_tree.root_iter(), 0, offset);
+                let result = render::tree_render(&mut *self.win, self.bullet_tree.root_iter(), 0, offset);
                 let cursor = match result.1 {
                     Some(pos) => Insert(pos, offset),
                     None => Command((0, 0), 0),
@@ -62,7 +63,7 @@ impl Editor {
                 }
             }
         }
-        render::cursor_render(self.win, self.cursor.pos());
+        self.win.move_cursor(self.cursor.pos());
         PanelUpdate {
             should_render: true,
             should_quit: false,
@@ -72,6 +73,11 @@ impl Editor {
                 String::new()
             },
         }
+    }
+
+    pub fn focus(&mut self) {
+        self.win.move_cursor(self.cursor.pos());
+        self.win.refresh();
     }
 
     pub fn cursor(&self) -> CursorState {

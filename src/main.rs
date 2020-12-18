@@ -1,20 +1,21 @@
 #![allow(dead_code)]
 #![allow(clippy::eval_order_dependence)]
 
+use crate::render::{NCurses, Window};
+use crate::status::render_status;
 use editor::Editor;
 use ncurses as n;
 use std::time::{Duration, Instant};
-use crate::status::render_status;
 
 mod editor;
 mod raster;
 mod render;
-mod tree;
 mod status;
+mod tree;
 
 struct RenderStats {
     key_render_times: Vec<Duration>,
-    loop_times: Vec<Duration>
+    loop_times: Vec<Duration>,
 }
 
 pub struct PanelUpdate {
@@ -27,14 +28,12 @@ fn average(times: &[Duration]) -> f32 {
     times.iter().map(|d| d.as_millis()).sum::<u128>() as f32 / times.len() as f32
 }
 
-fn main_loop(e: &mut Editor, w: render::WindowStore) -> RenderStats {
+fn main_loop(e: &mut Editor, mut status: Box<dyn Window>) -> RenderStats {
     let mut stats = RenderStats {
         key_render_times: vec![],
         loop_times: vec![],
     };
-    n::wrefresh(w.editor);
-    render_status(w.status, e.cursor(), "");
-    n::wrefresh(w.status);
+    render_status(&mut *status, e.cursor(), "");
     loop {
         let key = n::getch();
         let loop_now = Instant::now();
@@ -51,11 +50,8 @@ fn main_loop(e: &mut Editor, w: render::WindowStore) -> RenderStats {
         }
         let cursor = e.cursor();
 
-        render_status(w.status, cursor, &e_update.status_msg);
-
-        n::wrefresh(w.status);
-        n::wmove(w.editor, cursor.pos().0, cursor.pos().1);
-        n::wrefresh(w.editor);
+        render_status(&mut *status, cursor, &e_update.status_msg);
+        e.focus();
         stats.loop_times.push(loop_now.elapsed());
     }
     stats
@@ -64,17 +60,20 @@ fn main_loop(e: &mut Editor, w: render::WindowStore) -> RenderStats {
 fn main() {
     render::setup_ncurses();
 
-    let bounds = render::get_max_yx(n::stdscr());
+    let bounds = render::get_screen_bounds();
 
     let window_store = render::WindowStore {
-        editor: render::create_window(bounds.0 - 2, bounds.1, 0, 0),
-        status: render::create_window(1, bounds.1, bounds.0 - 1, 0),
+        editor: Box::new(NCurses(render::create_window(bounds.0 - 2, bounds.1, 0, 0))),
+        status: Box::new(NCurses(render::create_window(1, bounds.1, bounds.0 - 1, 0))),
     };
 
-    let stats = main_loop(&mut Editor::new(window_store.editor), window_store);
+    let stats = main_loop(&mut Editor::new(window_store.editor), window_store.status);
     n::endwin();
 
     // 5 ms
-    println!("average editor latency: {:.2}", average(&stats.key_render_times));
+    println!(
+        "average editor latency: {:.2}",
+        average(&stats.key_render_times)
+    );
     println!("average loop latency: {:.2}", average(&stats.loop_times));
 }
