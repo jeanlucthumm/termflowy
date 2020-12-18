@@ -104,7 +104,7 @@ impl Editor {
                         Direction::Right,
                         (col as u32)
                             .checked_sub(pos.1 as u32)
-                            .ok_or("y pos should never be bigger than col")?,
+                            .expect("y pos should never be bigger than col"),
                     )?
                     .map(|b| find_left_text(b, pos.1 as u32))?;
                 self.cursor = Command(pos, col);
