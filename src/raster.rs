@@ -377,7 +377,7 @@ mod tests {
     }
 
     #[test]
-    fn browser_go_no_wrap_test() -> Result<(), &'static str> {
+    fn browser_go_no_wrap_test() -> Result<(), String> {
         let raster = raster_from_vec(vec![
             vec![Empty, Empty, Empty], //
             vec![Empty, Empty, Empty], //

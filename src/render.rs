@@ -1,7 +1,11 @@
+use std::fmt;
+use std::fmt::{Debug, Display, Formatter};
+
 use ncurses as n;
 
 use crate::raster::PixelState;
 use crate::raster::Raster;
+use crate::raster::{is_in_bounds, linear_move};
 use crate::tree;
 
 const CHAR_BULLET: char = '•';
@@ -287,6 +291,130 @@ fn split_every_n(string: &str, n: usize) -> Vec<&str> {
     slices
 }
 
+pub struct TestWindow {
+    pub max: Point,
+    pub pos: Point,
+    pub screen: Vec<Vec<char>>,
+    pub print_on_refresh: bool,
+}
+
+impl TestWindow {
+    // TODO figure out how to use unsafe code so we don't have to use |print_on_refresh|
+    pub fn new(max: Point, print_on_refresh: bool) -> TestWindow {
+        TestWindow {
+            max,
+            pos: (0, 0),
+            screen: vec![vec![' '; max.1 as usize]; max.0 as usize],
+            print_on_refresh,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        let mut buffer = String::new();
+        let horizontal = "─".repeat(self.screen[0].len());
+        buffer.push('┌');
+        buffer.push_str(&horizontal);
+        buffer.push_str("┐\n");
+        for row in &self.screen {
+            buffer.push('│');
+            for c in row {
+                buffer.push(*c);
+            }
+            buffer.push_str("│\n");
+        }
+        buffer.push('└');
+        buffer.push_str(&horizontal);
+        buffer.push_str("┘\n");
+        buffer
+    }
+
+    pub fn print(&self) {
+        println!("{}", self);
+    }
+
+    fn is_cursor_at_end(&self) -> bool {
+        self.pos.0 == self.max.0 - 1 && self.pos.1 == self.max.1 - 1
+    }
+}
+
+impl Display for TestWindow {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "TestWindow max: {:?} pos: {:?}\n{}",
+            self.max,
+            self.pos,
+            &self.to_string()
+        )
+    }
+}
+
+impl Debug for TestWindow {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.to_string())
+    }
+}
+
+impl Window for TestWindow {
+    fn get_max_yx(&self) -> (i32, i32) {
+        self.max
+    }
+
+    fn get_yx(&self) -> (i32, i32) {
+        self.pos
+    }
+
+    fn move_cursor(&mut self, pos: (i32, i32)) {
+        self.pos = pos;
+    }
+
+    fn addstr(&mut self, s: &str) {
+        for c in s.chars() {
+            self.addch(c);
+        }
+    }
+
+    fn addch(&mut self, c: char) {
+        self.screen[self.pos.0 as usize][self.pos.1 as usize] = c;
+        if !self.is_cursor_at_end() {
+            self.pos = linear_move(self.pos, self.max, 1)
+                .expect(&format!("For character: {}\n{}", c, &self));
+        }
+    }
+
+    fn move_addstr(&mut self, pos: (i32, i32), s: &str) {
+        if !is_in_bounds(pos, self.max) {
+            panic!("For pos: {:?}\n{}", pos, &self);
+        }
+        self.pos = pos;
+        self.addstr(s);
+    }
+
+    fn refresh(&self) {
+        if self.print_on_refresh {
+            self.print();
+        }
+    }
+}
+
+impl PartialEq for TestWindow {
+    fn eq(&self, other: &Self) -> bool {
+        if self.max != other.max || self.pos != other.pos {
+            return false;
+        }
+        for i in 0..self.max.0 {
+            for j in 0..self.max.1 {
+                let i = i as usize;
+                let j = j as usize;
+                if self.screen[i][j] != other.screen[i][j] {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
 pub mod debug {
     use super::*;
 
@@ -306,125 +434,29 @@ pub mod debug {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::raster::{is_in_bounds, linear_move};
-    use std::fmt;
-    use std::fmt::{Debug, Display, Formatter};
 
-    const STARTER: &str = "• ";
-
-    struct TestWindow {
-        max: Point,
-        pos: Point,
-        screen: Vec<Vec<char>>,
+    struct TestIdGen {
+        counter: i32,
     }
 
-    impl TestWindow {
-        fn new(max: Point) -> TestWindow {
-            TestWindow {
-                max,
-                pos: (0, 0),
-                screen: vec![vec![' '; max.1 as usize]; max.0 as usize],
-            }
-        }
-
-        fn to_string(&self) -> String {
-            let mut buffer = String::new();
-            let horizontal = "─".repeat(self.screen[0].len());
-            buffer.push('┌');
-            buffer.push_str(&horizontal);
-            buffer.push_str("┐\n");
-            for row in &self.screen {
-                buffer.push('│');
-                for c in row {
-                    buffer.push(*c);
-                }
-                buffer.push_str("│\n");
-            }
-            buffer.push('└');
-            buffer.push_str(&horizontal);
-            buffer.push_str("┘\n");
-            buffer
-        }
-
-        fn print(&self) {
-            println!("{}", self);
+    impl TestIdGen {
+        fn new() -> TestIdGen {
+            TestIdGen { counter: 1 }
         }
     }
 
-    impl Display for TestWindow {
-        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            write!(
-                f,
-                "TestWindow max: {:?} pos: {:?}\n{}",
-                self.max,
-                self.pos,
-                &self.to_string()
-            )
-        }
-    }
-
-    impl Debug for TestWindow {
-        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", &self.to_string())
-        }
-    }
-
-    impl Window for TestWindow {
-        fn get_max_yx(&self) -> (i32, i32) {
-            self.max
-        }
-
-        fn get_yx(&self) -> (i32, i32) {
-            self.pos
-        }
-
-        fn move_cursor(&mut self, pos: (i32, i32)) {
-            self.pos = pos;
-        }
-
-        fn addstr(&mut self, s: &str) {
-            for c in s.chars() {
-                self.addch(c);
-            }
-        }
-
-        fn addch(&mut self, c: char) {
-            self.screen[self.pos.0 as usize][self.pos.1 as usize] = c;
-            self.pos = linear_move(self.pos, self.max, 1)
-                .expect(&format!("For character: {}\n{}", c, &self));
-        }
-
-        fn move_addstr(&mut self, pos: (i32, i32), s: &str) {
-            if !is_in_bounds(pos, self.max) {
-                panic!("For pos: {:?}\n{}", pos, &self);
-            }
-            self.pos = pos;
-            self.addstr(s);
-        }
-
-        fn refresh(&self) {}
-    }
-
-    impl PartialEq for TestWindow {
-        fn eq(&self, other: &Self) -> bool {
-            if self.max != other.max || self.pos != other.pos {
-                return false;
-            }
-            for i in 0..self.max.0 {
-                for j in 0..self.max.1 {
-                    let i = i as usize;
-                    let j = j as usize;
-                    if self.screen[i][j] != other.screen[i][j] {
-                        return false;
-                    }
-                }
-            }
-            true
+    impl tree::IdGenerator for TestIdGen {
+        fn gen(&mut self) -> i32 {
+            (self.counter, self.counter += 1).0
         }
     }
 
     fn make_windows(max: Point) -> (TestWindow, TestWindow, Raster) {
-        (TestWindow::new(max), TestWindow::new(max), Raster::new(max))
+        (
+            TestWindow::new(max, false),
+            TestWindow::new(max, false),
+            Raster::new(max),
+        )
     }
 
     #[test]
@@ -529,5 +561,31 @@ mod tests {
             (1, 6)
         );
         assert_eq!(win, exp);
+    }
+
+    #[test]
+    fn render_empty_tree() {
+        let (mut exp, mut win, _raster) = make_windows((10, 10));
+        exp.addch(CHAR_BULLET);
+        clear_remaining(&mut exp);
+        let tree = tree::Tree::new(Box::new(TestIdGen::new()));
+        tree_render(&mut win, tree.root_iter(), 0, 0);
+        assert_eq!(win, exp);
+    }
+
+    #[test]
+    fn clear_remaining_line_test() {
+        let mut win = TestWindow::new((10, 10), false);
+        win.addstr("xx");
+        clear_remaining_line(&mut win);
+        assert_eq!(win.pos, (1, 0));
+    }
+
+    #[test]
+    fn clear_remaining_test() {
+        let mut win = TestWindow::new((10, 10), false);
+        win.addstr("xx");
+        clear_remaining(&mut win);
+        assert_eq!(win.pos, (9, 9));
     }
 }
