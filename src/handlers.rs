@@ -22,7 +22,7 @@ pub fn command_i(
     cursor: CommandState,
     tree: &mut Tree,
     raster: &Raster,
-) -> Result<Cursor, &'static str> {
+) -> Result<Cursor, String> {
     if let Some(PixelState::Text { id, offset }) = raster.get(cursor.pos) {
         let _ = tree.activate(id);
         Ok(Insert(InsertState {
@@ -30,7 +30,7 @@ pub fn command_i(
             offset: tree.get_active_content().len() - offset,
         }))
     } else {
-        Err("")
+        Err(format!("unknown position: {:?}", cursor.pos))
     }
 }
 
@@ -39,7 +39,7 @@ pub fn command_hl(
     cursor: CommandState,
     _tree: &mut Tree,
     raster: &Raster,
-) -> Result<Cursor, &'static str> {
+) -> Result<Cursor, String> {
     let direction = match key {
         "h" => Direction::Left,
         _ => Direction::Right,
@@ -57,7 +57,7 @@ pub fn command_jk(
     cursor: CommandState,
     _tree: &mut Tree,
     raster: &Raster,
-) -> Result<Cursor, &'static str> {
+) -> Result<Cursor, String> {
     let direction = match key {
         "j" => Direction::Down,
         _ => Direction::Up,
@@ -76,7 +76,7 @@ pub fn command_jk(
     Ok(Command(CommandState { pos, col: cursor.col }))
 }
 
-fn find_left_text(b: Browser, col: u32) -> Result<Point, &str> {
+fn find_left_text(b: Browser, col: u32) -> Result<Point, String> {
     if b.state().is_text() {
         Ok(b.pos())
     } else {
@@ -85,7 +85,7 @@ fn find_left_text(b: Browser, col: u32) -> Result<Point, &str> {
                 if b.state().is_text() {
                     Ok(b.pos())
                 } else {
-                    Err("no text on target line")
+                    Err(String::from("no text on target line"))
                 }
             })
     }

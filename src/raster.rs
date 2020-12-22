@@ -100,14 +100,14 @@ impl<'a> Browser<'a> {
         mut self,
         dir: Direction,
         mut predicate: F,
-    ) -> Result<Browser<'a>, &'static str>
+    ) -> Result<Browser<'a>, String>
     where
         F: FnMut(PixelState) -> bool,
     {
         let offset = match dir {
             Left => -1,
             Right => 1,
-            _ => return Err("go_while only defined for Left and Right directions"),
+            _ => return Err(String::from("go_while only defined for Left and Right directions")),
         };
         loop {
             if let Some(pos) = linear_move(self.pos, self.raster.max, offset) {
@@ -118,7 +118,7 @@ impl<'a> Browser<'a> {
                     }
                 }
             } else {
-                return Err("could not browse past bounds");
+                return Err(String::from("could not browse past bounds"));
             }
         }
         Ok(self)
@@ -129,7 +129,7 @@ impl<'a> Browser<'a> {
         dir: Direction,
         mut count: u32,
         mut predicate: F,
-    ) -> Result<Browser<'a>, &'static str>
+    ) -> Result<Browser<'a>, String>
     where
         F: FnMut(PixelState) -> bool,
     {
@@ -148,7 +148,7 @@ impl<'a> Browser<'a> {
         dir: Direction,
         mut count: u32,
         mut predicate: F,
-    ) -> Result<Browser<'a>, &'static str>
+    ) -> Result<Browser<'a>, String>
     where
         F: FnMut(PixelState) -> bool,
     {
@@ -164,7 +164,7 @@ impl<'a> Browser<'a> {
         }
     }
 
-    pub fn go_no_wrap(mut self, dir: Direction, times: u32) -> Result<Browser<'a>, &'static str> {
+    pub fn go_no_wrap(mut self, dir: Direction, times: u32) -> Result<Browser<'a>, String> {
         let times = times as i32;
         let new_pos = add_points(
             self.pos,
@@ -179,7 +179,7 @@ impl<'a> Browser<'a> {
             self.pos = new_pos;
             Ok(self)
         } else {
-            Err("hit bounds")
+            Err(String::from("hit bounds"))
         }
     }
 

@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use Cursor::*;
 use render::Point;
+use Cursor::*;
 
-use crate::{handlers, tree};
-use crate::{PanelUpdate, render};
 use crate::raster::Raster;
 use crate::render::Window;
+use crate::{handlers, tree};
+use crate::{render, PanelUpdate};
 
 const ERR_BOUNDS: &str = "cursor position was out of bounds";
 
@@ -95,12 +95,12 @@ impl Editor {
         self.cursor
     }
 
-    fn on_command_key_press(&mut self, key: &str, cursor: CommandState) -> Result<(), &str> {
+    fn on_command_key_press(&mut self, key: &str, cursor: CommandState) -> Result<(), String> {
         if let Some(handler) = self.command_map.get(key) {
             self.cursor = handler(key, cursor, &mut self.bullet_tree, &self.raster)?;
             Ok(())
         } else {
-            Err("could not find key pressed")
+            Err(format!("unknown command key: {}", key))
         }
     }
 
@@ -170,8 +170,7 @@ impl Cursor {
     }
 }
 
-// TODO actually make an error type
 pub type CommandHandler =
-    fn(&str, CommandState, &mut tree::Tree, &Raster) -> Result<Cursor, &'static str>;
+    fn(&str, CommandState, &mut tree::Tree, &Raster) -> Result<Cursor, String>;
 pub type InsertHandler =
-    fn(&str, InsertState, &mut tree::Tree, &Raster) -> Result<Cursor, &'static str>;
+    fn(&str, InsertState, &mut tree::Tree, &Raster) -> Result<Cursor, String>;

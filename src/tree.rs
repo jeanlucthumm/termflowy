@@ -41,14 +41,14 @@ impl Tree {
         self.nodes.insert(node.id, node);
     }
 
-    pub fn indent(&mut self) -> Result<(), &str> {
+    pub fn indent(&mut self) -> Result<(), String> {
         let active = self.nodes.get(&self.active).unwrap();
         let id = active.id;
         let parent_id = active.parent.unwrap();
         let sibling_id = if let Some(x) = active.sibling {
             x
         } else {
-            return Err("could not indent: node has no siblings");
+            return Err(String::from("could not indent: node has no siblings"));
         };
 
         let parent = self.nodes.get_mut(&parent_id).unwrap();
@@ -67,12 +67,12 @@ impl Tree {
         Ok(())
     }
 
-    pub fn unindent(&mut self) -> Result<(), &str> {
+    pub fn unindent(&mut self) -> Result<(), String> {
         let active = self.nodes.get(&self.active).unwrap();
         let id = active.id;
         let parent_id = active.parent.unwrap();
         if parent_id == 0 {
-            return Err("could not unindent: already at top level");
+            return Err(String::from("could not unindent: already at top level"));
         }
         let grandparent_id = self.nodes.get(&parent_id).unwrap().parent.unwrap();
 
