@@ -1,10 +1,12 @@
-use CursorState::*;
+use std::collections::HashMap;
+
+use Cursor::*;
 use render::Point;
 
+use crate::{handlers, tree};
 use crate::{PanelUpdate, render};
-use crate::raster::{Browser, Direction, PixelState, Raster};
+use crate::raster::Raster;
 use crate::render::Window;
-use crate::tree;
 
 const ERR_BOUNDS: &str = "cursor position was out of bounds";
 
@@ -21,8 +23,9 @@ impl tree::IdGenerator for IdGen {
 pub struct Editor {
     bullet_tree: tree::Tree,
     win: Box<dyn Window>,
-    cursor: CursorState,
+    cursor: Cursor,
     raster: Raster,
+    command_map: HashMap<String, CommandHandler>,
 }
 
 impl Editor {
@@ -30,8 +33,11 @@ impl Editor {
         let tree = tree::Tree::new(Box::new(IdGen { current: 1 }));
         let (raster, cursor) = render::tree_render(&mut *win, tree.root_iter(), 0, 0);
         let cursor = match cursor {
-            Some(pos) => Insert(pos, 0),
-            None => Command((0, 0), 0),
+            Some(pos) => Insert(InsertState { pos, offset: 0 }),
+            None => Command(CommandState {
+                pos: (0, 0),
+                col: 0,
+            }),
         };
         win.move_cursor(cursor.pos());
         Editor {
@@ -39,25 +45,31 @@ impl Editor {
             win,
             cursor,
             raster,
+            command_map: handlers::new_command_map(),
         }
     }
 
     pub fn update(&mut self, key: &str) -> PanelUpdate {
         match self.cursor {
-            Command(pos, col) => {
-                let _ = self.on_command_key_press(&key, pos, col);
-                let (raster, _) = render::tree_render(&mut *self.win, self.bullet_tree.root_iter(), 0, 0);
+            Command(state) => {
+                let _ = self.on_command_key_press(&key, state);
+                let (raster, _) =
+                    render::tree_render(&mut *self.win, self.bullet_tree.root_iter(), 0, 0);
                 self.raster = raster;
             }
-            Insert(pos, offset) => {
+            Insert(InsertState { pos, offset }) => {
                 self.on_insert_key_press(&key, pos, offset);
-                let result = render::tree_render(&mut *self.win, self.bullet_tree.root_iter(), 0, offset);
+                let result =
+                    render::tree_render(&mut *self.win, self.bullet_tree.root_iter(), 0, offset);
                 let cursor = match result.1 {
-                    Some(pos) => Insert(pos, offset),
-                    None => Command((0, 0), 0),
+                    Some(pos) => Insert(InsertState { pos, offset }),
+                    None => Command(CommandState {
+                        pos: (0, 0),
+                        col: 0,
+                    }),
                 };
                 self.raster = result.0;
-                if let Insert(_, _) = self.cursor {
+                if let Insert(InsertState { .. }) = self.cursor {
                     self.cursor = cursor;
                 }
             }
@@ -66,7 +78,7 @@ impl Editor {
         PanelUpdate {
             should_render: true,
             should_quit: false,
-            status_msg: if let Command(pos, _) = self.cursor {
+            status_msg: if let Command(CommandState { pos, .. }) = self.cursor {
                 format!("{:?}", self.raster.get(pos).unwrap())
             } else {
                 String::new()
@@ -79,62 +91,17 @@ impl Editor {
         self.win.refresh();
     }
 
-    pub fn cursor(&self) -> CursorState {
+    pub fn cursor(&self) -> Cursor {
         self.cursor
     }
 
-    fn on_command_key_press(&mut self, key: &str, pos: Point, col: i32) -> Result<(), &str> {
-        match key {
-            "h" => {
-                let pos = self
-                    .raster
-                    .browser(pos)
-                    .expect(ERR_BOUNDS)
-                    .go_while(Direction::Left, |state| !state.is_text())?
-                    .pos();
-                self.cursor = Command(pos, pos.1);
-            }
-            "j" | "k" => {
-                let initial_dir = if key == "j" {
-                    Direction::Down
-                } else {
-                    Direction::Up
-                };
-                let pos = self
-                    .raster
-                    .browser(pos)
-                    .expect(ERR_BOUNDS)
-                    .go_no_wrap(initial_dir, 1)?
-                    .go_no_wrap(
-                        Direction::Right,
-                        (col as u32)
-                            .checked_sub(pos.1 as u32)
-                            .expect("y pos should never be bigger than col"),
-                    )?
-                    .map(|b| find_left_text(b, pos.1 as u32))?;
-                self.cursor = Command(pos, col);
-            }
-            "l" => {
-                let pos = self
-                    .raster
-                    .browser(pos)
-                    .expect(ERR_BOUNDS)
-                    .go_while(Direction::Right, |state| !state.is_text())?
-                    .pos();
-                self.cursor = Command(pos, pos.1);
-            }
-            "i" => {
-                if let Some(PixelState::Text { id, offset }) = self.raster.get(self.cursor.pos()) {
-                    let _ = self.bullet_tree.activate(id);
-                    self.cursor = Insert(
-                        self.cursor.pos(),
-                        self.bullet_tree.get_active_content().len() - offset,
-                    )
-                }
-            }
-            _ => {}
+    fn on_command_key_press(&mut self, key: &str, cursor: CommandState) -> Result<(), &str> {
+        if let Some(handler) = self.command_map.get(key) {
+            self.cursor = handler(key, cursor, &mut self.bullet_tree, &self.raster)?;
+            Ok(())
+        } else {
+            Err("could not find key pressed")
         }
-        Ok(())
     }
 
     fn on_insert_key_press(&mut self, key: &str, _pos: Point, offset: usize) {
@@ -164,7 +131,10 @@ impl Editor {
                 }
             }
             "^C" => {
-                self.cursor = Command(self.cursor.pos(), self.cursor().pos().1);
+                self.cursor = Command(CommandState {
+                    pos: self.cursor.pos(),
+                    col: self.cursor().pos().1,
+                });
             }
             _ => {
                 let content = self.bullet_tree.get_mut_active_content();
@@ -174,33 +144,34 @@ impl Editor {
     }
 }
 
-fn find_left_text(b: Browser, col: u32) -> Result<Point, &str> {
-    if b.state().is_text() {
-        Ok(b.pos())
-    } else {
-        b.go_while_or_count(Direction::Left, col, |state| !state.is_text())?
-            .map(|b| {
-                if b.state().is_text() {
-                    Ok(b.pos())
-                } else {
-                    Err("no text on target line")
-                }
-            })
-    }
+#[derive(Copy, Clone)]
+pub struct CommandState {
+    pub pos: Point,
+    pub col: i32,
 }
 
 #[derive(Copy, Clone)]
-pub enum CursorState {
-    // i32 is the 'x' of the last horizontal move
-    Command(Point, i32),
-    // usize is how many chars away from last char in content
-    Insert(Point, usize),
+pub struct InsertState {
+    pub pos: Point,
+    pub offset: usize,
 }
 
-impl CursorState {
+#[derive(Copy, Clone)]
+pub enum Cursor {
+    Command(CommandState),
+    Insert(InsertState),
+}
+
+impl Cursor {
     pub fn pos(&self) -> Point {
         match self {
-            Command(pos, _) | Insert(pos, _) => *pos,
+            Command(CommandState { pos, .. }) | Insert(InsertState { pos, .. }) => *pos,
         }
     }
 }
+
+// TODO actually make an error type
+pub type CommandHandler =
+    fn(&str, CommandState, &mut tree::Tree, &Raster) -> Result<Cursor, &'static str>;
+pub type InsertHandler =
+    fn(&str, InsertState, &mut tree::Tree, &Raster) -> Result<Cursor, &'static str>;

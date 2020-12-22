@@ -12,6 +12,7 @@ mod raster;
 mod render;
 mod status;
 mod tree;
+mod handlers;
 
 struct RenderStats {
     key_render_times: Vec<Duration>,
