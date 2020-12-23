@@ -17,6 +17,7 @@ pub fn new_command_map() -> HashMap<String, editor::CommandHandler> {
     map.insert(String::from("k"), command_jk);
     map.insert(String::from("b"), command_b);
     map.insert(String::from("e"), command_e);
+    map.insert(String::from("A"), command_shift_a);
     map
 }
 
@@ -140,6 +141,27 @@ pub fn command_e(
             })?
             .pos();
         Ok(Command(CommandState { pos, col: pos.1 }))
+    } else {
+        Err(format!(
+            "pixel state at position {:?} should have been text",
+            cursor.pos
+        ))
+    }
+}
+
+pub fn command_shift_a(
+    _key: &str,
+    cursor: CommandState,
+    _tree: &mut Tree,
+    raster: &Raster,
+) -> Result<Cursor, String> {
+    if let Text { .. } = raster.get(cursor.pos).unwrap() {
+        let pos = raster
+            .browser(cursor.pos)
+            .unwrap()
+            .go_while(Direction::Right, |state| state != PixelState::Empty)?
+            .pos();
+        Ok(Insert(InsertState { pos, offset: 0 }))
     } else {
         Err(format!(
             "pixel state at position {:?} should have been text",
