@@ -169,6 +169,15 @@ pub fn command_shift_a(p: HandlerInput) -> Result<HandlerOutput, String> {
     }
 }
 
+pub fn command_o(p: HandlerInput) -> Result<HandlerOutput, String> {
+    p.tree.create_sibling();
+    let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
+    Ok(HandlerOutput {
+        cursor: Some(Insert(InsertState { pos: pos.unwrap(), offset: 0 })),
+        raster: Some(raster),
+    })
+}
+
 fn find_left_text(b: Browser, col: u32) -> Result<Point, String> {
     if b.state().is_text() {
         Ok(b.pos())
