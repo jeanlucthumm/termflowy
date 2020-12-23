@@ -25,7 +25,7 @@ pub struct Editor {
     win: Box<dyn Window>,
     cursor: Cursor,
     raster: Raster,
-    command_map: HashMap<String, CommandHandler>,
+    command_map: HashMap<String, Handler>,
 }
 
 impl Editor {
@@ -51,8 +51,8 @@ impl Editor {
 
     pub fn update(&mut self, key: &str) -> PanelUpdate {
         match self.cursor {
-            Command(state) => {
-                let _ = self.on_command_key_press(&key, state);
+            Command(_) => {
+                let _ = self.on_command_key_press(&key);
                 let (raster, _) =
                     render::tree_render(&mut *self.win, self.bullet_tree.root_iter(), 0, 0);
                 self.raster = raster;
@@ -95,9 +95,21 @@ impl Editor {
         self.cursor
     }
 
-    fn on_command_key_press(&mut self, key: &str, cursor: CommandState) -> Result<(), String> {
+    fn on_command_key_press(& mut self, key: &str) -> Result<(), String> {
         if let Some(handler) = self.command_map.get(key) {
-            self.cursor = handler(key, cursor, &mut self.bullet_tree, &self.raster)?;
+            let output = (*handler)(HandlerInput {
+                key,
+                cursor: self.cursor,
+                tree: &mut self.bullet_tree,
+                raster: &self.raster,
+                win: &mut *self.win
+            })?;
+            if let Some(cursor) = output.cursor {
+                self.cursor = cursor;
+            }
+            if let Some(raster) = output.raster {
+                self.raster = raster;
+            }
             Ok(())
         } else {
             Err(format!("unknown command key: {}", key))
@@ -168,9 +180,26 @@ impl Cursor {
             Command(CommandState { pos, .. }) | Insert(InsertState { pos, .. }) => *pos,
         }
     }
+
+    pub fn command_state(&self) -> CommandState {
+        match self {
+            Command(state) => *state,
+            _ => panic!(),
+        }
+    }
 }
 
-pub type CommandHandler =
-    fn(&str, CommandState, &mut tree::Tree, &Raster) -> Result<Cursor, String>;
-pub type InsertHandler =
-    fn(&str, InsertState, &mut tree::Tree, &Raster) -> Result<Cursor, String>;
+pub type Handler = fn(HandlerInput) -> Result<HandlerOutput, String>;
+
+pub struct HandlerInput<'a> {
+    pub key: &'a str,
+    pub cursor: Cursor,
+    pub tree: &'a mut tree::Tree,
+    pub raster: &'a Raster,
+    pub win: &'a mut dyn Window,
+}
+
+pub struct HandlerOutput {
+    pub cursor: Option<Cursor>,
+    pub raster: Option<Raster>,
+}

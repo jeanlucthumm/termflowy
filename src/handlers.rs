@@ -2,14 +2,14 @@ use std::collections::HashMap;
 
 use crate::editor;
 use crate::editor::Cursor::*;
-use crate::editor::{CommandState, Cursor, InsertState};
+use crate::editor::{CommandState, HandlerInput, HandlerOutput, InsertState};
 use crate::raster::PixelState::*;
-use crate::raster::{Browser, Direction, PixelState, Raster};
+use crate::raster::{Browser, Direction, PixelState};
+use crate::render;
 use crate::render::Point;
-use crate::tree::Tree;
 
-pub fn new_command_map() -> HashMap<String, editor::CommandHandler> {
-    let mut map: HashMap<String, editor::CommandHandler> = HashMap::new();
+pub fn new_command_map<'a>() -> HashMap<String, editor::Handler> {
+    let mut map: HashMap<String, editor::Handler> = HashMap::new();
     map.insert(String::from("i"), command_i);
     map.insert(String::from("h"), command_hl);
     map.insert(String::from("l"), command_hl);
@@ -18,55 +18,51 @@ pub fn new_command_map() -> HashMap<String, editor::CommandHandler> {
     map.insert(String::from("b"), command_b);
     map.insert(String::from("e"), command_e);
     map.insert(String::from("A"), command_shift_a);
+    map.insert(String::from("o"), command_o);
     map
 }
 
-pub fn command_i(
-    _key: &str,
-    cursor: CommandState,
-    tree: &mut Tree,
-    raster: &Raster,
-) -> Result<Cursor, String> {
-    if let Some(PixelState::Text { id, offset }) = raster.get(cursor.pos) {
-        let _ = tree.activate(id);
-        Ok(Insert(InsertState {
-            pos: cursor.pos,
-            offset: tree.get_active_content().len() - offset,
-        }))
+pub fn command_i(p: HandlerInput) -> Result<HandlerOutput, String> {
+    let cursor = p.cursor.command_state();
+    if let Some(PixelState::Text { id, offset }) = p.raster.get(cursor.pos) {
+        let _ = p.tree.activate(id);
+        Ok(HandlerOutput {
+            cursor: Some(Insert(InsertState {
+                pos: cursor.pos,
+                offset: p.tree.get_active_content().len() - offset,
+            })),
+            raster: None,
+        })
     } else {
         Err(format!("unknown position: {:?}", cursor.pos))
     }
 }
 
-pub fn command_hl(
-    key: &str,
-    cursor: CommandState,
-    _tree: &mut Tree,
-    raster: &Raster,
-) -> Result<Cursor, String> {
-    let direction = match key {
+pub fn command_hl(p: HandlerInput) -> Result<HandlerOutput, String> {
+    let direction = match p.key {
         "h" => Direction::Left,
         _ => Direction::Right,
     };
-    let pos = raster
-        .browser(cursor.pos)
+    let pos = p
+        .raster
+        .browser(p.cursor.command_state().pos)
         .expect("")
         .go_while(direction, |state| !state.is_text())?
         .pos();
-    Ok(Command(CommandState { pos, col: pos.1 }))
+    Ok(HandlerOutput {
+        cursor: Some(Command(CommandState { pos, col: pos.1 })),
+        raster: None,
+    })
 }
 
-pub fn command_jk(
-    key: &str,
-    cursor: CommandState,
-    _tree: &mut Tree,
-    raster: &Raster,
-) -> Result<Cursor, String> {
-    let direction = match key {
+pub fn command_jk(p: HandlerInput) -> Result<HandlerOutput, String> {
+    let direction = match p.key {
         "j" => Direction::Down,
         _ => Direction::Up,
     };
-    let pos = raster
+    let cursor = p.cursor.command_state();
+    let pos = p
+        .raster
         .browser(cursor.pos)
         .expect("")
         .go_no_wrap(direction, 1)?
@@ -77,21 +73,20 @@ pub fn command_jk(
                 .expect("y pos should never be bigger than col"),
         )?
         .map(|b| find_left_text(b, cursor.pos.1 as u32))?;
-    Ok(Command(CommandState {
-        pos,
-        col: cursor.col,
-    }))
+    Ok(HandlerOutput {
+        cursor: Some(Command(CommandState {
+            pos,
+            col: cursor.col,
+        })),
+        raster: None,
+    })
 }
 
-pub fn command_b(
-    _key: &str,
-    cursor: CommandState,
-    tree: &mut Tree,
-    raster: &Raster,
-) -> Result<Cursor, String> {
-    if let Text { id, offset } = raster.get(cursor.pos).unwrap() {
-        tree.activate(id)?;
-        let content_chars: Vec<char> = tree.get_active_content().chars().collect();
+pub fn command_b(p: HandlerInput) -> Result<HandlerOutput, String> {
+    let cursor = p.cursor.command_state();
+    if let Text { id, offset } = p.raster.get(cursor.pos).unwrap() {
+        p.tree.activate(id)?;
+        let content_chars: Vec<char> = p.tree.get_active_content().chars().collect();
         let mut new_offset = offset;
         while new_offset > 0 {
             new_offset -= 1;
@@ -100,14 +95,18 @@ pub fn command_b(
                 break;
             }
         }
-        let pos = raster
+        let pos = p
+            .raster
             .browser(cursor.pos)
             .unwrap()
             .go_until_count(Direction::Left, (offset - new_offset) as u32, |state| {
                 state.is_text()
             })?
             .pos();
-        Ok(Command(CommandState { pos, col: pos.1 }))
+        Ok(HandlerOutput {
+            cursor: Some(Command(CommandState { pos, col: pos.1 })),
+            raster: None,
+        })
     } else {
         Err(format!(
             "pixel state at position {:?} should have been text",
@@ -116,15 +115,11 @@ pub fn command_b(
     }
 }
 
-pub fn command_e(
-    _key: &str,
-    cursor: CommandState,
-    tree: &mut Tree,
-    raster: &Raster,
-) -> Result<Cursor, String> {
-    if let Text { id, offset } = raster.get(cursor.pos).unwrap() {
-        tree.activate(id)?;
-        let content_chars: Vec<char> = tree.get_active_content().chars().collect();
+pub fn command_e(p: HandlerInput) -> Result<HandlerOutput, String> {
+    let cursor = p.cursor.command_state();
+    if let Text { id, offset } = p.raster.get(cursor.pos).unwrap() {
+        p.tree.activate(id)?;
+        let content_chars: Vec<char> = p.tree.get_active_content().chars().collect();
         let mut new_offset = offset;
         while new_offset < content_chars.len() - 1 {
             new_offset += 1;
@@ -133,14 +128,18 @@ pub fn command_e(
                 break;
             }
         }
-        let pos = raster
+        let pos = p
+            .raster
             .browser(cursor.pos)
             .unwrap()
             .go_until_count(Direction::Right, (new_offset - offset) as u32, |state| {
                 state.is_text()
             })?
             .pos();
-        Ok(Command(CommandState { pos, col: pos.1 }))
+        Ok(HandlerOutput {
+            cursor: Some(Command(CommandState { pos, col: pos.1 })),
+            raster: None,
+        })
     } else {
         Err(format!(
             "pixel state at position {:?} should have been text",
@@ -149,19 +148,19 @@ pub fn command_e(
     }
 }
 
-pub fn command_shift_a(
-    _key: &str,
-    cursor: CommandState,
-    _tree: &mut Tree,
-    raster: &Raster,
-) -> Result<Cursor, String> {
-    if let Text { .. } = raster.get(cursor.pos).unwrap() {
-        let pos = raster
+pub fn command_shift_a(p: HandlerInput) -> Result<HandlerOutput, String> {
+    let cursor = p.cursor.command_state();
+    if let Text { .. } = p.raster.get(cursor.pos).unwrap() {
+        let pos = p
+            .raster
             .browser(cursor.pos)
             .unwrap()
             .go_while(Direction::Right, |state| state != PixelState::Empty)?
             .pos();
-        Ok(Insert(InsertState { pos, offset: 0 }))
+        Ok(HandlerOutput {
+            cursor: Some(Insert(InsertState { pos, offset: 0 })),
+            raster: None,
+        })
     } else {
         Err(format!(
             "pixel state at position {:?} should have been text",
