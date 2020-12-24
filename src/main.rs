@@ -35,6 +35,8 @@ fn main_loop(e: &mut Editor, mut status: Box<dyn Window>) -> RenderStats {
         loop_times: vec![],
     };
     render_status(&mut *status, e.cursor(), "");
+    // TODO this is shitty hack, find the true reason the cursor is fucked
+    n::mv(e.cursor().pos().0, e.cursor().pos().1);
     loop {
         let key = n::getch();
         let loop_now = Instant::now();

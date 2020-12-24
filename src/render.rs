@@ -88,7 +88,7 @@ pub fn get_screen_bounds() -> (i32, i32) {
 }
 
 pub fn create_window(h: i32, w: i32, y: i32, x: i32) -> n::WINDOW {
-    n::newwin(h, w, y, x)
+    n::subwin(n::stdscr(), h, w, y, x)
 }
 
 pub fn clear_remaining(win: &mut dyn Window) -> usize {
