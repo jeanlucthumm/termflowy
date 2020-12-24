@@ -309,7 +309,17 @@ impl TestWindow {
         }
     }
 
-    pub fn to_string(&self) -> String {
+    pub fn print(&self) {
+        println!("{}", self);
+    }
+
+    fn is_cursor_at_end(&self) -> bool {
+        self.pos.0 == self.max.0 - 1 && self.pos.1 == self.max.1 - 1
+    }
+}
+
+impl Display for TestWindow {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut buffer = String::new();
         let horizontal = "─".repeat(self.screen[0].len());
         buffer.push('┌');
@@ -325,33 +335,20 @@ impl TestWindow {
         buffer.push('└');
         buffer.push_str(&horizontal);
         buffer.push_str("┘\n");
-        buffer
-    }
-
-    pub fn print(&self) {
-        println!("{}", self);
-    }
-
-    fn is_cursor_at_end(&self) -> bool {
-        self.pos.0 == self.max.0 - 1 && self.pos.1 == self.max.1 - 1
-    }
-}
-
-impl Display for TestWindow {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "TestWindow max: {:?} pos: {:?}\n{}",
             self.max,
             self.pos,
-            &self.to_string()
+            buffer,
         )
     }
 }
 
 impl Debug for TestWindow {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.to_string())
+        // write!(f, "{}", &self.to_string())
+        write!(f, "{}", self)
     }
 }
 
@@ -378,7 +375,7 @@ impl Window for TestWindow {
         self.screen[self.pos.0 as usize][self.pos.1 as usize] = c;
         if !self.is_cursor_at_end() {
             self.pos = linear_move(self.pos, self.max, 1)
-                .expect(&format!("For character: {}\n{}", c, &self));
+                .unwrap_or_else(|| panic!("For character: {}\n{}", c, &self));
         }
     }
 

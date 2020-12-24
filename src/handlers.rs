@@ -8,7 +8,7 @@ use crate::raster::{Browser, Direction, PixelState};
 use crate::render;
 use crate::render::Point;
 
-pub fn new_command_map<'a>() -> HashMap<String, editor::Handler> {
+pub fn new_command_map() -> HashMap<String, editor::Handler> {
     let mut map: HashMap<String, editor::Handler> = HashMap::new();
     map.insert(String::from("i"), command_i);
     map.insert(String::from("h"), command_hl);
