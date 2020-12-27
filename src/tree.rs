@@ -443,7 +443,5 @@ mod tests {
         tree.activate(4).unwrap();
         tree.delete().unwrap();
         assert_eq!(tree.active, 5);
-
-        // With self as sibling and middle in list
     }
 }
