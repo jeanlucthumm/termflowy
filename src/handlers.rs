@@ -6,7 +6,8 @@ use crate::editor::{CommandState, HandlerInput, HandlerOutput, InsertState};
 use crate::raster::PixelState::*;
 use crate::raster::{Browser, Direction, PixelState};
 use crate::render;
-use crate::render::Point;
+use crate::render::{Point, Window};
+use crate::tree::Tree;
 
 const SEPARATORS: [char; 1] = [' '];
 
@@ -22,6 +23,17 @@ pub fn new_command_map() -> HashMap<String, editor::Handler> {
     map.insert(String::from("e"), command_bwe);
     map.insert(String::from("A"), command_shift_a);
     map.insert(String::from("o"), command_o);
+    map
+}
+
+pub fn new_insert_map() -> HashMap<String, editor::Handler> {
+    let mut map: HashMap<String, editor::Handler> = HashMap::new();
+    map.insert(String::from("^I"), insert_tab);
+    map.insert(String::from("KEY_BTAB"), insert_shift_tab);
+    map.insert(String::from("^J"), insert_enter);
+    map.insert(String::from("KEY_BACKSPACE"), insert_backspace);
+    map.insert(String::from("^?"), insert_backspace);
+    map.insert(String::from("^C"), insert_control_c);
     map
 }
 
@@ -230,7 +242,7 @@ fn jump_to_next_separator<'a>(
     };
     let final_index = match final_index {
         x if x < 0 => 0,
-        x if x >= string.len() as i32 => string.len().checked_sub(1).unwrap_or(0) as i32,
+        x if x >= string.len() as i32 => string.len().saturating_sub(1) as i32,
         _ => final_index,
     };
     Ok(browser.go_wrap(dir, (final_index - index as i32).abs() as u32)?)
@@ -240,6 +252,81 @@ fn make_pos_command_output(pos: Point) -> HandlerOutput {
     HandlerOutput {
         cursor: Some(Command(CommandState { pos, col: pos.1 })),
         raster: None,
+    }
+}
+
+pub fn insert_tab(p: HandlerInput) -> Result<HandlerOutput, String> {
+    p.tree.indent()?;
+    render_and_make_insert_output(p.tree, p.win, 0)
+}
+
+pub fn insert_shift_tab(p: HandlerInput) -> Result<HandlerOutput, String> {
+    p.tree.unindent()?;
+    render_and_make_insert_output(p.tree, p.win, 0)
+}
+
+pub fn insert_enter(p: HandlerInput) -> Result<HandlerOutput, String> {
+    p.tree.create_sibling();
+    render_and_make_insert_output(p.tree, p.win, 0)
+}
+
+pub fn insert_backspace(p: HandlerInput) -> Result<HandlerOutput, String> {
+    let cursor = p.cursor.insert_state();
+    let content = p.tree.get_mut_active_content();
+    if let Some(remove_index) = content
+        .len()
+        .checked_sub(cursor.offset)
+        .expect("offset should not be larger than length of content")
+        .checked_sub(1)
+    {
+        content.remove(remove_index);
+        render_and_make_insert_output(p.tree, p.win, 0)
+    } else {
+        // We should delete current bullet and move focus up
+        todo!();
+    }
+}
+
+pub fn insert_control_c(p: HandlerInput) -> Result<HandlerOutput, String> {
+    let pos = p.cursor.pos();
+    Ok(HandlerOutput {
+        cursor: Some(Command(match p.raster.get(pos).unwrap() {
+            Text { .. } => CommandState { pos, col: pos.1 },
+            Empty => {
+                // We are inserting at end so cursor is one past text
+                let pos = p
+                    .raster
+                    .browser(pos)
+                    .unwrap()
+                    .go_wrap(Direction::Left, 1)?
+                    .map(|b| {
+                        if b.state().is_text() {
+                            b.pos()
+                        } else {
+                            panic!("insert cursor was out of bounds on ctrl-c")
+                        }
+                    });
+                CommandState { pos, col: pos.1 }
+            }
+            _ => panic!("insert cursor was out of bounds on ctrl-c"),
+        })),
+        raster: None,
+    })
+}
+
+fn render_and_make_insert_output(
+    tree: &mut Tree,
+    win: &mut dyn Window,
+    offset: usize,
+) -> Result<HandlerOutput, String> {
+    let (raster, pos) = render::tree_render(win, tree.root_iter(), 0, 0);
+    if let Some(pos) = pos {
+        Ok(HandlerOutput {
+            cursor: Some(Insert(InsertState { offset, pos })),
+            raster: Some(raster),
+        })
+    } else {
+        Err(String::from("tree could not find active bullet position"))
     }
 }
 

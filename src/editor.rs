@@ -4,7 +4,7 @@ use render::Point;
 use Cursor::*;
 
 use crate::raster::Raster;
-use crate::render::Window;
+use crate::render::{tree_render, Window};
 use crate::{handlers, tree};
 use crate::{render, PanelUpdate};
 
@@ -26,6 +26,7 @@ pub struct Editor {
     cursor: Cursor,
     raster: Raster,
     command_map: HashMap<String, Handler>,
+    insert_map: HashMap<String, Handler>,
 }
 
 impl Editor {
@@ -46,6 +47,7 @@ impl Editor {
             cursor,
             raster,
             command_map: handlers::new_command_map(),
+            insert_map: handlers::new_insert_map(),
         }
     }
 
@@ -56,24 +58,10 @@ impl Editor {
                 if let Err(msg) = self.on_command_key_press(&key) {
                     status_msg = msg;
                 }
-                let (raster, _) =
-                    render::tree_render(&mut *self.win, self.bullet_tree.root_iter(), 0, 0);
-                self.raster = raster;
             }
-            Insert(InsertState { pos, offset }) => {
-                self.on_insert_key_press(&key, pos, offset);
-                let result =
-                    render::tree_render(&mut *self.win, self.bullet_tree.root_iter(), 0, offset);
-                let cursor = match result.1 {
-                    Some(pos) => Insert(InsertState { pos, offset }),
-                    None => Command(CommandState {
-                        pos: (0, 0),
-                        col: 0,
-                    }),
-                };
-                self.raster = result.0;
-                if let Insert(InsertState { .. }) = self.cursor {
-                    self.cursor = cursor;
+            Insert(_) => {
+                if let Err(msg) = self.on_insert_key_press(&key) {
+                    status_msg = msg;
                 }
             }
         }
@@ -94,14 +82,14 @@ impl Editor {
         self.cursor
     }
 
-    fn on_command_key_press(& mut self, key: &str) -> Result<(), String> {
+    fn on_command_key_press(&mut self, key: &str) -> Result<(), String> {
         if let Some(handler) = self.command_map.get(key) {
             let output = (*handler)(HandlerInput {
                 key,
                 cursor: self.cursor,
                 tree: &mut self.bullet_tree,
                 raster: &self.raster,
-                win: &mut *self.win
+                win: &mut *self.win,
             })?;
             if let Some(cursor) = output.cursor {
                 self.cursor = cursor;
@@ -115,43 +103,34 @@ impl Editor {
         }
     }
 
-    fn on_insert_key_press(&mut self, key: &str, _pos: Point, offset: usize) {
-        match key {
-            // Indent
-            "^I" => {
-                let _ = self.bullet_tree.indent();
+    fn on_insert_key_press(&mut self, key: &str) -> Result<(), String> {
+        if let Some(handler) = self.insert_map.get(key) {
+            let output = (*handler)(HandlerInput {
+                key,
+                cursor: self.cursor,
+                tree: &mut self.bullet_tree,
+                raster: &self.raster,
+                win: &mut *self.win,
+            })?;
+            if let Some(cursor) = output.cursor {
+                self.cursor = cursor;
             }
-            // Unindent
-            "KEY_BTAB" => {
-                let _ = self.bullet_tree.unindent();
+            if let Some(raster) = output.raster {
+                self.raster = raster;
             }
-            // Enter
-            "^J" => {
-                self.bullet_tree.create_sibling();
-            }
-            // Backspace
-            "KEY_BACKSPACE" => {
-                let content = self.bullet_tree.get_mut_active_content();
-                if let Some(remove_index) = content
-                    .len()
-                    .checked_sub(offset)
-                    .expect("offset should not be larger than length of content")
-                    .checked_sub(1)
-                {
-                    content.remove(remove_index);
-                }
-            }
-            "^C" => {
-                self.cursor = Command(CommandState {
-                    pos: self.cursor.pos(),
-                    col: self.cursor().pos().1,
-                });
-            }
-            _ => {
-                let content = self.bullet_tree.get_mut_active_content();
-                content.insert_str(content.len() - offset, &key);
-            }
-        };
+            Ok(())
+        } else {
+            let content = self.bullet_tree.get_mut_active_content();
+            let cursor = self.cursor.insert_state();
+            content.insert_str(content.len() - cursor.offset, &key);
+            let (raster, pos) = tree_render(self.win.as_mut(), self.bullet_tree.root_iter(), 0, 0);
+            self.raster = raster;
+            self.cursor = Insert(InsertState {
+                pos: pos.unwrap(),
+                offset: cursor.offset,
+            });
+            Ok(())
+        }
     }
 }
 
@@ -180,7 +159,7 @@ impl Cursor {
         }
     }
 
-    pub fn command_state(&self) -> CommandState {
+    pub fn command_state(self) -> CommandState {
         match self {
             Command(state) => state,
             _ => panic!("assumed cursor was command but it was not"),
