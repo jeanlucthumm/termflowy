@@ -37,6 +37,10 @@ pub fn new_insert_map() -> HashMap<String, editor::Handler> {
     map.insert(String::from("KEY_BACKSPACE"), insert_backspace);
     map.insert(String::from("^?"), insert_backspace);
     map.insert(String::from("^C"), insert_control_c);
+    map.insert(String::from("KEY_LEFT"), insert_arrow_keys);
+    map.insert(String::from("KEY_RIGHT"), insert_arrow_keys);
+    map.insert(String::from("KEY_UP"), insert_arrow_keys);
+    map.insert(String::from("KEY_DOWN"), insert_arrow_keys);
     map
 }
 
@@ -320,6 +324,11 @@ pub fn insert_control_c(p: HandlerInput) -> Result<HandlerOutput, String> {
         })),
         raster: None,
     })
+}
+
+fn insert_arrow_keys(p: HandlerInput) -> Result<HandlerOutput, String> {
+    p.tree.get_mut_active_content().push_str(" USE VIM KEYBINDINGS YOU PLEB ");
+    render_and_make_insert_output(p.tree, p.win, p.cursor.insert_state().offset)
 }
 
 fn render_and_make_insert_output(
