@@ -50,9 +50,12 @@ impl Editor {
     }
 
     pub fn update(&mut self, key: &str) -> PanelUpdate {
+        let mut status_msg = String::new();
         match self.cursor {
             Command(_) => {
-                let _ = self.on_command_key_press(&key);
+                if let Err(msg) = self.on_command_key_press(&key) {
+                    status_msg = msg;
+                }
                 let (raster, _) =
                     render::tree_render(&mut *self.win, self.bullet_tree.root_iter(), 0, 0);
                 self.raster = raster;
@@ -78,11 +81,7 @@ impl Editor {
         PanelUpdate {
             should_render: true,
             should_quit: false,
-            status_msg: if let Command(CommandState { pos, .. }) = self.cursor {
-                format!("{:?}", self.raster.get(pos).unwrap())
-            } else {
-                String::new()
-            },
+            status_msg,
         }
     }
 

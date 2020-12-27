@@ -7,7 +7,6 @@ pub struct Raster {
     max: (i32, i32),
     current: (i32, i32),
 }
-
 impl Raster {
     // max is not inclusive
     pub fn new(max: (i32, i32)) -> Raster {
@@ -181,6 +180,10 @@ impl<'a> Browser<'a> {
         } else {
             Err(String::from("hit bounds"))
         }
+    }
+
+    pub fn go_wrap(self, dir: Direction, times: u32) -> Result<Browser<'a>, String> {
+        self.go_until_count(dir, times, |_| true)
     }
 
     pub fn map<F, T>(self, mut f: F) -> T

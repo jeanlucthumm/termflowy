@@ -1,3 +1,4 @@
+#![feature(iter_advance_by)]
 #![allow(dead_code)]
 #![allow(clippy::eval_order_dependence)]
 
@@ -18,6 +19,7 @@ struct RenderStats {
     key_render_times: Vec<Duration>,
     loop_times: Vec<Duration>,
 }
+
 
 pub struct PanelUpdate {
     pub should_render: bool,
