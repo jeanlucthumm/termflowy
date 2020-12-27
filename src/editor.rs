@@ -123,7 +123,12 @@ impl Editor {
             let content = self.bullet_tree.get_mut_active_content();
             let cursor = self.cursor.insert_state();
             content.insert_str(content.len() - cursor.offset, &key);
-            let (raster, pos) = tree_render(self.win.as_mut(), self.bullet_tree.root_iter(), 0, 0);
+            let (raster, pos) = tree_render(
+                self.win.as_mut(),
+                self.bullet_tree.root_iter(),
+                0,
+                cursor.offset,
+            );
             self.raster = raster;
             self.cursor = Insert(InsertState {
                 pos: pos.unwrap(),
