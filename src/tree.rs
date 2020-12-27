@@ -37,11 +37,23 @@ impl Tree {
     /// Create another bullet at the same level, i.e. a sibling of the active node
     pub fn create_sibling(&mut self) {
         let active = self.nodes.get(&self.active).unwrap();
+        let active_id = active.id;
         let mut node = Node::new(self.generator.gen(), active.parent);
         node.sibling = Some(active.id);
 
         let parent = self.nodes.get_mut(&node.parent.unwrap()).unwrap();
-        parent.children.push(node.id);
+        let down_sibling_id;
+        if let Some(index) = parent.children.iter().position(|id| *id == active_id) {
+            down_sibling_id = parent.children.get(index + 1).cloned();
+            parent.children.insert(index + 1, node.id);
+        } else {
+            panic!("child not found in its own parent")
+        }
+
+        if let Some(down_sibling_id) = down_sibling_id {
+            let down_sibling = self.nodes.get_mut(&down_sibling_id).unwrap();
+            down_sibling.sibling = Some(node.id)
+        }
 
         self.active = node.id;
         self.nodes.insert(node.id, node);
@@ -123,9 +135,7 @@ impl Tree {
             .iter()
             .position(|id| *id == active.id)
             .unwrap();
-        // Node that has active as sibling
-        let sibling_id = parent.children.get(index_in_parent + 1).copied();
-        // Sibling of active
+        let down_sibling_id = parent.children.get(index_in_parent + 1).copied();
         let active_sibling_id = active.sibling;
         let active_id = active.id;
 
@@ -136,7 +146,7 @@ impl Tree {
             .children
             .remove(index_in_parent);
 
-        if let Some(sibling_id) = sibling_id {
+        if let Some(sibling_id) = down_sibling_id {
             self.nodes.get_mut(&sibling_id).unwrap().sibling = active_sibling_id;
             self.active = sibling_id;
         } else if let Some(active_sibling_id) = active_sibling_id {
@@ -295,6 +305,25 @@ mod tests {
         let root_node = tree.nodes.get(&0).unwrap();
         assert!(root_node.children.iter().any(|i| *i == 1));
         assert!(root_node.children.iter().any(|i| *i == 2));
+    }
+
+    #[test]
+    fn create_sibling_in_middle_of_list() {
+        let mut tree = new_test_tree();
+        tree.create_sibling(); // id = 2
+        tree.create_sibling();
+        tree.indent().unwrap(); // id 3 under 2
+        tree.create_sibling(); // id 4 under 2
+        tree.create_sibling(); // id 5 under 2
+        tree.activate(4).unwrap();
+        tree.create_sibling(); // id 6 under 2 (after 4, before 5)
+
+        let children = &tree.nodes.get(&2).unwrap().children;
+        assert_eq!(children.get(2), Some(&6));
+        assert_eq!(children.get(3), Some(&5));
+
+        let five = tree.nodes.get(&5).unwrap();
+        assert_eq!(five.sibling, Some(6))
     }
 
     #[test]
