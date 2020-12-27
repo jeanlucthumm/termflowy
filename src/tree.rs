@@ -132,6 +132,14 @@ impl Tree {
 
         if let Some(sibling_id) = sibling_id {
             self.nodes.get_mut(&sibling_id).unwrap().sibling = active_sibling_id;
+            self.active = sibling_id;
+        } else if let Some(active_sibling_id) = active_sibling_id {
+            self.active = active_sibling_id;
+        } else {
+            if parent_id == 0 {
+                panic!("delete should not lead to root being active");
+            }
+            self.active = parent_id;
         }
 
         self.delete_subtree_ids(active_id);
@@ -380,5 +388,28 @@ mod tests {
     fn cannot_delete_last_node() {
         let mut tree = new_test_tree();
         assert!(tree.delete().is_err())
+    }
+
+    #[test]
+    fn delete_updates_active() {
+        let mut tree = new_test_tree();
+
+        // With own sibling
+        tree.create_sibling(); // id = 2
+        tree.indent().unwrap(); // 2 under 1
+        tree.create_sibling(); // id = 3
+        tree.delete().unwrap(); // delete 3
+        assert_eq!(tree.active, 2);
+
+        // With no sibling
+        tree.delete().unwrap(); // delete 2
+        assert_eq!(tree.active, 1);
+
+        // With self as sibling
+        tree.create_sibling(); // id = 4
+        tree.create_sibling(); // id = 5
+        tree.activate(4).unwrap();
+        tree.delete().unwrap();
+        assert_eq!(tree.active, 5);
     }
 }
