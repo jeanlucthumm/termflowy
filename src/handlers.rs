@@ -1,3 +1,6 @@
+/// Invariants:
+/// - Command handlers are always passed cursors whose PixelState is Text
+
 use std::collections::HashMap;
 
 use crate::editor;
@@ -136,26 +139,22 @@ pub fn command_bwe(p: HandlerInput) -> Result<HandlerOutput, String> {
 
 pub fn command_shift_a(p: HandlerInput) -> Result<HandlerOutput, String> {
     let cursor = p.cursor.command_state();
-    if let Text { .. } = p.raster.get(cursor.pos).unwrap() {
-        let pos = p
-            .raster
-            .browser(cursor.pos)
-            .unwrap()
-            .go_while(Direction::Right, |state| state != PixelState::Empty)?
-            .pos();
-        Ok(HandlerOutput {
-            cursor: Some(Insert(InsertState { pos, offset: 0 })),
-            raster: None,
-        })
-    } else {
-        Err(format!(
-            "pixel state at position {:?} should have been text",
-            cursor.pos
-        ))
-    }
+    p.tree.activate(p.raster.get(cursor.pos).unwrap().text_id())?;
+    let pos = p
+        .raster
+        .browser(cursor.pos)
+        .unwrap()
+        .go_while(Direction::Right, |state| state.is_text())?
+        .pos();
+    Ok(HandlerOutput {
+        cursor: Some(Insert(InsertState { pos, offset: 0 })),
+        raster: None,
+    })
 }
 
 pub fn command_o(p: HandlerInput) -> Result<HandlerOutput, String> {
+    p.tree
+        .activate(p.raster.get(p.cursor.pos()).unwrap().text_id())?;
     p.tree.create_sibling();
     let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
     Ok(HandlerOutput {

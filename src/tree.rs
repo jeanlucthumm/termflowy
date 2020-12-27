@@ -6,6 +6,11 @@ pub trait IdGenerator {
     fn gen(&mut self) -> i32;
 }
 
+/// Invariants:
+/// - There is an active node
+/// - The active node is never the root node
+/// - There is at least one root node and one child of the root node
+/// - No two nodes have the same id
 pub struct Tree {
     active: i32,
     nodes: NodeMap,

@@ -67,6 +67,13 @@ impl PixelState {
     pub fn is_text(self) -> bool {
         matches!(self, Text { .. })
     }
+
+    pub fn text_id(self) -> i32 {
+        match self {
+            Text { id, .. } => id,
+            _ => panic!("assumed pixel state is text but was wrong")
+        }
+    }
 }
 
 #[derive(Copy, Clone)]
