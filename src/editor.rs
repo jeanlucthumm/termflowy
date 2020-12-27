@@ -67,7 +67,6 @@ impl Editor {
         }
         self.win.move_cursor(self.cursor.pos());
         PanelUpdate {
-            should_render: true,
             should_quit: false,
             status_msg,
         }

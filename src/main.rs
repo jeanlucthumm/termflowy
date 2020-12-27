@@ -22,7 +22,6 @@ struct RenderStats {
 
 
 pub struct PanelUpdate {
-    pub should_render: bool,
     pub should_quit: bool,
     pub status_msg: String,
 }
