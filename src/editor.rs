@@ -182,8 +182,15 @@ impl Cursor {
 
     pub fn command_state(&self) -> CommandState {
         match self {
-            Command(state) => *state,
-            _ => panic!(),
+            Command(state) => state,
+            _ => panic!("assumed cursor was command but it was not"),
+        }
+    }
+
+    pub fn insert_state(self) -> InsertState {
+        match self {
+            Insert(state) => state,
+            _ => panic!("assumed cursor was insert but it was not"),
         }
     }
 }
