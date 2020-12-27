@@ -94,13 +94,57 @@ impl Tree {
 
     pub fn activate(&mut self, id: i32) -> Result<(), String> {
         if !self.nodes.contains_key(&id) {
-            Err(format!("could not activate node with id {}: does not exist", id))
-        }  else if id == 0 {
+            Err(format!(
+                "could not activate node with id {}: does not exist",
+                id
+            ))
+        } else if id == 0 {
             Err(String::from("cannot active root node"))
-        }  else {
+        } else {
             self.active = id;
             Ok(())
         }
+    }
+
+    pub fn delete(&mut self) -> Result<(), String> {
+        let active = self.nodes.get(&self.active).unwrap();
+        let parent = self.nodes.get(&active.parent.unwrap()).unwrap();
+        if parent.id == 0 && active.sibling.is_none() {
+            return Err(String::from("cannot delete the last bullet"));
+        }
+        let index_in_parent = parent
+            .children
+            .iter()
+            .position(|id| *id == active.id)
+            .unwrap();
+        // Node that has active as sibling
+        let sibling_id = parent.children.get(index_in_parent + 1).copied();
+        // Sibling of active
+        let active_sibling_id = active.sibling;
+        let active_id = active.id;
+
+        let parent_id = parent.id;
+        self.nodes
+            .get_mut(&parent_id)
+            .unwrap()
+            .children
+            .remove(index_in_parent);
+
+        if let Some(sibling_id) = sibling_id {
+            self.nodes.get_mut(&sibling_id).unwrap().sibling = active_sibling_id;
+        }
+
+        self.delete_subtree_ids(active_id);
+
+        Ok(())
+    }
+
+    fn delete_subtree_ids(&mut self, id: i32) {
+        let children = self.nodes.get(&id).unwrap().children.clone();
+        for i in children {
+            self.delete_subtree_ids(i);
+        }
+        self.nodes.remove(&id);
     }
 
     pub fn get_mut_active_content(&mut self) -> &mut String {
@@ -244,7 +288,6 @@ mod tests {
         assert_eq!(two.sibling, Some(1));
         println!("{:?}", two);
 
-
         assert!(tree.indent().is_ok());
         tree.create_sibling(); // id = 3 (under 1)
         tree.create_sibling(); // id = 4 (under 1)
@@ -285,5 +328,57 @@ mod tests {
         for child in three_children {
             assert!(three_exp_children.iter().any(|&x| x == child.current.id));
         }
+    }
+
+    #[test]
+    fn delete_simple() {
+        let mut tree = new_test_tree();
+        tree.create_sibling(); // id = 2
+        tree.create_sibling(); // id = 3
+        tree.delete().unwrap(); // id 3 deleted
+        assert!(tree.nodes.get(&3).is_none());
+        assert_eq!(tree.nodes.get(&0).unwrap().children.iter().any(|id| *id == 3), false);
+    }
+
+    #[test]
+    fn activate_and_delete() {
+        let mut tree = new_test_tree();
+        tree.create_sibling(); // id = 2
+        tree.create_sibling(); // id = 3
+        tree.activate(2).unwrap();
+        tree.delete().unwrap();
+        assert!(tree.nodes.get(&2).is_none());
+        assert_eq!(tree.nodes.get(&0).unwrap().children.iter().any(|id| *id == 2), false);
+        assert_eq!(tree.nodes.get(&3).unwrap().sibling, Some(1));
+    }
+
+    #[test]
+    fn delete_deletes_children() {
+        let mut tree = new_test_tree();
+        tree.create_sibling(); // id = 2
+        tree.create_sibling(); // id = 3
+        tree.indent().unwrap(); // 3 under 2
+        tree.create_sibling(); // id = 4, under 2
+        tree.create_sibling(); // id = 5, under 2
+        tree.create_sibling(); // id = 6
+        tree.indent().unwrap(); // 6 under 5
+        tree.create_sibling(); // id = 7
+        tree.indent().unwrap(); // 7 under 6
+
+        tree.activate(2).unwrap();
+        tree.delete().unwrap();
+        assert!(tree.nodes.get(&2).is_none());
+        assert!(tree.nodes.get(&3).is_none());
+        assert!(tree.nodes.get(&4).is_none());
+        assert!(tree.nodes.get(&5).is_none());
+        assert!(tree.nodes.get(&6).is_none());
+        assert!(tree.nodes.get(&7).is_none());
+        assert_eq!(tree.nodes.get(&0).unwrap().children.iter().any(|id| *id == 2), false);
+    }
+
+    #[test]
+    fn cannot_delete_last_node() {
+        let mut tree = new_test_tree();
+        assert!(tree.delete().is_err())
     }
 }
