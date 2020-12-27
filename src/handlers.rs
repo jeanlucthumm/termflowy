@@ -17,8 +17,9 @@ pub fn new_command_map() -> HashMap<String, editor::Handler> {
     map.insert(String::from("l"), command_hl);
     map.insert(String::from("j"), command_jk);
     map.insert(String::from("k"), command_jk);
-    map.insert(String::from("b"), command_b);
-    map.insert(String::from("e"), command_e);
+    map.insert(String::from("b"), command_bwe);
+    map.insert(String::from("w"), command_bwe);
+    map.insert(String::from("e"), command_bwe);
     map.insert(String::from("A"), command_shift_a);
     map.insert(String::from("o"), command_o);
     map
@@ -45,16 +46,13 @@ pub fn command_hl(p: HandlerInput) -> Result<HandlerOutput, String> {
         "h" => Direction::Left,
         _ => Direction::Right,
     };
-    let pos = p
-        .raster
-        .browser(p.cursor.command_state().pos)
-        .expect("")
-        .go_while(direction, |state| !state.is_text())?
-        .pos();
-    Ok(HandlerOutput {
-        cursor: Some(Command(CommandState { pos, col: pos.1 })),
-        raster: None,
-    })
+    Ok(make_pos_command_output(
+        p.raster
+            .browser(p.cursor.command_state().pos)
+            .expect("")
+            .go_while(direction, |state| !state.is_text())?
+            .pos(),
+    ))
 }
 
 pub fn command_jk(p: HandlerInput) -> Result<HandlerOutput, String> {
@@ -63,96 +61,64 @@ pub fn command_jk(p: HandlerInput) -> Result<HandlerOutput, String> {
         _ => Direction::Up,
     };
     let cursor = p.cursor.command_state();
-    let pos = p
-        .raster
-        .browser(cursor.pos)
-        .expect("")
-        .go_no_wrap(direction, 1)?
-        .go_no_wrap(
-            Direction::Right,
-            (cursor.col as u32)
-                .checked_sub(cursor.pos.1 as u32)
-                .expect("y pos should never be bigger than col"),
-        )?
-        .map(|b| find_left_text(b, cursor.pos.1 as u32))?;
-    Ok(HandlerOutput {
-        cursor: Some(Command(CommandState {
-            pos,
-            col: cursor.col,
-        })),
-        raster: None,
-    })
+    Ok(make_pos_command_output(
+        p.raster
+            .browser(cursor.pos)
+            .expect("")
+            .go_no_wrap(direction, 1)?
+            .go_no_wrap(
+                Direction::Right,
+                (cursor.col as u32)
+                    .checked_sub(cursor.pos.1 as u32)
+                    .expect("y pos should never be bigger than col"),
+            )?
+            .map(|b| find_left_text(b, cursor.pos.1 as u32))?,
+    ))
 }
 
-pub fn command_b(p: HandlerInput) -> Result<HandlerOutput, String> {
+pub fn command_bwe(p: HandlerInput) -> Result<HandlerOutput, String> {
     let cursor = p.cursor.command_state();
-    // Get initial browser position
-    let browser = match p.raster.get(cursor.pos).unwrap() {
-        Text { offset: 0, .. } => {
-            // Go to previous bullet
-            p.raster
-                .browser(cursor.pos)
-                .unwrap()
-                .go_while(Direction::Left, |state| !state.is_text())?
-        }
-        Empty => {
-            p.raster
-                .browser(cursor.pos)
-                .unwrap()
-                .go_until_count(Direction::Left, 1, |_| true)?
-        }
-        _ => p.raster.browser(cursor.pos).unwrap(),
+    match p.raster.get(cursor.pos) {
+        Some(Text { id, .. }) => p.tree.activate(id)?,
+        err => return Err(format!("invalid pixel state: {:?}", err)),
     };
-    if let Text { id, offset } = browser.state() {
+    if let Some(Text { id, .. }) = p.raster.get(cursor.pos) {
         p.tree.activate(id)?;
-        let pos = jump_to_next_separator(
-            p.tree.get_active_content(),
-            offset,
-            Direction::Left,
-            1,
-            &SEPARATORS,
-            browser,
-        )?
-        .pos();
-        Ok(HandlerOutput {
-            cursor: Some(Command(CommandState { pos, col: pos.1 })),
-            raster: None,
-        })
     } else {
-        Err(format!("unexpected pixel state: {:?}", browser.state()))
+        return Err(String::from("invalid pixel state"));
     }
-}
-
-pub fn command_e(p: HandlerInput) -> Result<HandlerOutput, String> {
-    let cursor = p.cursor.command_state();
-    if let Text { id, offset } = p.raster.get(cursor.pos).unwrap() {
-        p.tree.activate(id)?;
-        let content_chars: Vec<char> = p.tree.get_active_content().chars().collect();
-        let mut new_offset = offset;
-        while new_offset < content_chars.len() - 1 {
-            new_offset += 1;
-            if content_chars[new_offset] == ' ' && new_offset - 1 != offset {
-                new_offset -= 1;
-                break;
-            }
-        }
-        let pos = p
+    let content = p.tree.get_active_content();
+    let (dir, final_offset, skip_index) = match p.key {
+        "b" => (Direction::Left, 1, 0),
+        "w" => (Direction::Right, 1, content.len() - 1),
+        "e" => (Direction::Right, -1, content.len() - 1),
+        _ => panic!("check key handler mappings"),
+    };
+    // Go to another bullet if we are on extremities
+    let browser = match p.raster.get(cursor.pos).unwrap() {
+        Text { offset, .. } if offset == skip_index => p
             .raster
             .browser(cursor.pos)
             .unwrap()
-            .go_until_count(Direction::Right, (new_offset - offset) as u32, |state| {
-                state.is_text()
-            })?
-            .pos();
-        Ok(HandlerOutput {
-            cursor: Some(Command(CommandState { pos, col: pos.1 })),
-            raster: None,
-        })
-    } else {
-        Err(format!(
-            "pixel state at position {:?} should have been text",
-            cursor.pos
+            .go_while(dir, |state| !state.is_text())?,
+        Text { .. } => p.raster.browser(cursor.pos).unwrap(),
+        state => return Err(format!("invalid command pixel state: {:?}", state)),
+    };
+    if let Text { id, offset } = browser.state() {
+        p.tree.activate(id)?;
+        Ok(make_pos_command_output(
+            jump_to_next_separator(
+                p.tree.get_active_content(),
+                offset,
+                dir,
+                final_offset,
+                &SEPARATORS,
+                browser,
+            )?
+            .pos(),
         ))
+    } else {
+        panic!();
     }
 }
 
@@ -240,7 +206,7 @@ fn jump_to_next_separator<'a>(
         Direction::Right => false,
         _ => panic!(),
     };
-    let delta = match find_separator(string, index, reverse, sep) {
+    let final_index = match find_separator(string, index, reverse, sep) {
         // Ignore separator if it is right next to current index
         Some(i) if (i as i32 - index as i32).abs() == 1 => {
             return jump_to_next_separator(
@@ -252,17 +218,29 @@ fn jump_to_next_separator<'a>(
                 browser.go_wrap(dir, 1)?,
             );
         }
-        Some(i) => i as i32 - index as i32 + final_offset,
+        Some(i) => i as i32 + final_offset,
         None => {
             // Go to extremities if no sep
             match dir {
-                Direction::Left => -(index as i32),
-                Direction::Right => (string.len() - index - 1) as i32,
+                Direction::Left => 0,
+                Direction::Right => string.len() as i32 - 1,
                 _ => panic!(),
             }
         }
     };
-    Ok(browser.go_wrap(dir, delta.abs() as u32)?)
+    let final_index = match final_index {
+        x if x < 0 => 0,
+        x if x >= string.len() as i32 => string.len().checked_sub(1).unwrap_or(0) as i32,
+        _ => final_index,
+    };
+    Ok(browser.go_wrap(dir, (final_index - index as i32).abs() as u32)?)
+}
+
+fn make_pos_command_output(pos: Point) -> HandlerOutput {
+    HandlerOutput {
+        cursor: Some(Command(CommandState { pos, col: pos.1 })),
+        raster: None,
+    }
 }
 
 #[cfg(test)]
