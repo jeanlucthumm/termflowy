@@ -281,7 +281,16 @@ pub fn insert_backspace(p: HandlerInput) -> Result<HandlerOutput, String> {
         content.remove(remove_index);
         render_and_make_insert_output(p.tree, p.win, 0)
     } else {
+        let mut itr = p.tree.active_iter();
+        let new_active = match itr.next_sibling() {
+            Some(id) => id,
+            None => match itr.next_parent() {
+                Some(id) => id,
+                None => return Err(String::from("cannot backspace over first bullet")),
+            }
+        };
         p.tree.delete()?;
+        p.tree.activate(new_active)?;
         render_and_make_insert_output(p.tree, p.win, 0)
     }
 }

@@ -11,6 +11,7 @@ pub trait IdGenerator {
 /// - The active node is never the root node
 /// - There is at least one root node and one child of the root node
 /// - No two nodes have the same id
+/// - All nodes but root have a parent
 pub struct Tree {
     active: i32,
     nodes: NodeMap,
@@ -171,6 +172,10 @@ impl Tree {
     pub fn root_iter(&self) -> NodeIterator {
         NodeIterator::new(self.nodes.get(&0).unwrap(), &self.nodes, self.active)
     }
+
+    pub fn active_iter(&self) -> NodeIterator {
+        NodeIterator::new(self.nodes.get(&self.active).unwrap(), &self.nodes, self.active)
+    }
 }
 
 #[derive(Debug)]
@@ -223,6 +228,27 @@ impl<'a> NodeIterator<'a> {
             .iter()
             .map(move |i| self.nodes.get(i).unwrap())
             .map(move |n| Self::new(n, self.nodes, self.active_id))
+    }
+
+    pub fn next_parent(&mut self) -> Option<i32> {
+        match self.nodes.get(&self.active_id).unwrap().parent {
+            Some(0) => None,
+            Some(id) => {
+                self.active_id = id;
+                Some(id)
+            }
+            None => panic!("all nonroot nodes should have parents"),
+        }
+    }
+
+    pub fn next_sibling(&mut self) -> Option<i32> {
+        match self.nodes.get(&self.active_id).unwrap().sibling {
+            Some(id) => {
+                self.active_id = id;
+                Some(id)
+            }
+            None => None,
+        }
     }
 
     pub fn is_active(&self) -> bool {
@@ -410,11 +436,14 @@ mod tests {
         tree.delete().unwrap(); // delete 2
         assert_eq!(tree.active, 1);
 
-        // With self as sibling
+        // Tree is just root and 1 at this point.
+        // With self as sibling and first in list
         tree.create_sibling(); // id = 4
         tree.create_sibling(); // id = 5
         tree.activate(4).unwrap();
         tree.delete().unwrap();
         assert_eq!(tree.active, 5);
+
+        // With self as sibling and middle in list
     }
 }
