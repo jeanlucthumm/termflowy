@@ -220,6 +220,11 @@ fn render_content_slices(
     node_id: i32,
     raster: &mut Raster,
 ) {
+    if slices.is_empty() {
+        win.addch(' ');
+        raster.push(PixelState::Placeholder(node_id));
+        return;
+    }
     let mut offset = 0;
     for slice in slices {
         win.addstr(slice);
@@ -246,6 +251,12 @@ fn render_content_slices_active(
     insert_index: usize,
     raster: &mut Raster,
 ) -> (i32, i32) {
+    if slices.is_empty() {
+        let active_pos = win.get_yx();
+        win.addch(' ');
+        raster.push(PixelState::Placeholder(node_id));
+        return active_pos;
+    }
     let mut insert_cursor = None;
     let mut offset = 0;
     for slice in slices {
@@ -279,6 +290,9 @@ fn render_content_slices_active(
 }
 
 fn split_every_n(string: &str, n: usize) -> Vec<&str> {
+    if string.is_empty() {
+        return Vec::new();
+    }
     let mut start = 0;
     let mut end = n;
     let mut slices = vec![];
@@ -461,6 +475,13 @@ mod tests {
         assert_eq!(split_every_n("12345", 3), ["123", "45"]);
         assert_eq!(split_every_n("123456", 2), ["12", "34", "56"]);
         assert_eq!(split_every_n("123456", 10), ["123456"]);
+    }
+
+    #[test]
+    fn split_every_n_empty() {
+        let empty: Vec<&str> = Vec::new();
+        assert_eq!(split_every_n("", 2), empty);
+        assert_eq!(split_every_n("", 0), empty);
     }
 
     #[test]

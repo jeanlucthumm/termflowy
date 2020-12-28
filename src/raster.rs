@@ -61,6 +61,7 @@ pub enum PixelState {
         offset: usize, // position in content
     },
     Bullet(i32),
+    Placeholder(i32), // used for empty bullets
 }
 
 impl PixelState {
@@ -68,10 +69,17 @@ impl PixelState {
         matches!(self, Text { .. })
     }
 
-    pub fn text_id(self) -> i32 {
+    pub fn id(self) -> i32 {
         match self {
-            Text { id, .. } => id,
-            _ => panic!("assumed pixel state is text but was wrong")
+            Filler(id) | Text{ id, .. } | Bullet(id) | Placeholder(id) => id,
+            _ => panic!("assumed pixel state has id but was wrong: {:?}", self),
+        }
+    }
+
+    pub fn is_browsable(self) -> bool {
+        match self {
+            Text { .. } | Placeholder(_) => true,
+            _ => false,
         }
     }
 }
@@ -102,18 +110,18 @@ impl<'a> Browser<'a> {
     /// Moves the Browser in a given direction while the predicate returns true or bounds were hit,
     /// resulting in an error. Calling [pos](Browser::pos) will return the position of the pixel
     /// for which the predicate returned false.
-    pub fn go_while<F>(
-        mut self,
-        dir: Direction,
-        mut predicate: F,
-    ) -> Result<Browser<'a>, String>
+    pub fn go_while<F>(mut self, dir: Direction, mut predicate: F) -> Result<Browser<'a>, String>
     where
         F: FnMut(PixelState) -> bool,
     {
         let offset = match dir {
             Left => -1,
             Right => 1,
-            _ => return Err(String::from("go_while only defined for Left and Right directions")),
+            _ => {
+                return Err(String::from(
+                    "go_while only defined for Left and Right directions",
+                ))
+            }
         };
         loop {
             if let Some(pos) = linear_move(self.pos, self.raster.max, offset) {

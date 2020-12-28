@@ -1,13 +1,13 @@
 /// Invariants:
-/// - Command handlers are always passed cursors whose PixelState is Text
-
+/// - Command handlers are always passed cursors which are [browsable](PixelState::is_browsable),
+///   ecept the handler for <C-c>
 use std::collections::HashMap;
 
 use crate::editor;
 use crate::editor::Cursor::*;
 use crate::editor::{CommandState, HandlerInput, HandlerOutput, InsertState};
 use crate::raster::PixelState::*;
-use crate::raster::{Browser, Direction, PixelState};
+use crate::raster::{Browser, Direction};
 use crate::render;
 use crate::render::{Point, Window};
 use crate::tree::Tree;
@@ -46,18 +46,22 @@ pub fn new_insert_map() -> HashMap<String, editor::Handler> {
 
 pub fn command_i(p: HandlerInput) -> Result<HandlerOutput, String> {
     let cursor = p.cursor.command_state();
-    if let Some(PixelState::Text { id, offset }) = p.raster.get(cursor.pos) {
-        let _ = p.tree.activate(id);
-        Ok(HandlerOutput {
-            cursor: Some(Insert(InsertState {
-                pos: cursor.pos,
-                offset: p.tree.get_active_content().len() - offset,
-            })),
-            raster: None,
-        })
-    } else {
-        Err(format!("unknown position: {:?}", cursor.pos))
-    }
+    let (id, offset) = match p.raster.get(cursor.pos).unwrap() {
+        Text { id, offset } => (id, offset),
+        Placeholder(id) => (id, 0),
+        err => panic!(
+            "handler should only be passed browsable pixel states but got: {:?}",
+            err
+        ),
+    };
+    p.tree.activate(id)?;
+    Ok(HandlerOutput {
+        cursor: Some(Insert(InsertState {
+            pos: cursor.pos,
+            offset: p.tree.get_active_content().len() - offset,
+        })),
+        raster: None,
+    })
 }
 
 pub fn command_hl(p: HandlerInput) -> Result<HandlerOutput, String> {
@@ -69,7 +73,7 @@ pub fn command_hl(p: HandlerInput) -> Result<HandlerOutput, String> {
         p.raster
             .browser(p.cursor.command_state().pos)
             .expect("")
-            .go_while(direction, |state| !state.is_text())?
+            .go_while(direction, |state| !state.is_browsable())?
             .pos(),
     ))
 }
@@ -119,7 +123,7 @@ pub fn command_bwe(p: HandlerInput) -> Result<HandlerOutput, String> {
             .raster
             .browser(cursor.pos)
             .unwrap()
-            .go_while(dir, |state| !state.is_text())?,
+            .go_while(dir, |state| !state.is_browsable())?,
         Text { .. } => p.raster.browser(cursor.pos).unwrap(),
         state => return Err(format!("invalid command pixel state: {:?}", state)),
     };
@@ -143,13 +147,18 @@ pub fn command_bwe(p: HandlerInput) -> Result<HandlerOutput, String> {
 
 pub fn command_shift_a(p: HandlerInput) -> Result<HandlerOutput, String> {
     let cursor = p.cursor.command_state();
-    p.tree.activate(p.raster.get(cursor.pos).unwrap().text_id())?;
+    p.tree.activate(p.raster.get(cursor.pos).unwrap().id())?;
     let pos = p
         .raster
         .browser(cursor.pos)
         .unwrap()
-        .go_while(Direction::Right, |state| state.is_text())?
-        .pos();
+        .map(|b| match b.state() {
+            Placeholder(_) => b.pos(),
+            _ => b
+                .go_while(Direction::Right, |state| state.is_browsable())
+                .unwrap()
+                .pos(),
+        });
     Ok(HandlerOutput {
         cursor: Some(Insert(InsertState { pos, offset: 0 })),
         raster: None,
@@ -158,7 +167,7 @@ pub fn command_shift_a(p: HandlerInput) -> Result<HandlerOutput, String> {
 
 pub fn command_o(p: HandlerInput) -> Result<HandlerOutput, String> {
     p.tree
-        .activate(p.raster.get(p.cursor.pos()).unwrap().text_id())?;
+        .activate(p.raster.get(p.cursor.pos()).unwrap().id())?;
     p.tree.create_sibling();
     let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
     Ok(HandlerOutput {
@@ -171,12 +180,12 @@ pub fn command_o(p: HandlerInput) -> Result<HandlerOutput, String> {
 }
 
 fn find_left_text(b: Browser, col: u32) -> Result<Point, String> {
-    if b.state().is_text() {
+    if b.state().is_browsable() {
         Ok(b.pos())
     } else {
-        b.go_while_or_count(Direction::Left, col, |state| !state.is_text())?
+        b.go_while_or_count(Direction::Left, col, |state| !state.is_browsable())?
             .map(|b| {
-                if b.state().is_text() {
+                if b.state().is_browsable() {
                     Ok(b.pos())
                 } else {
                     Err(String::from("no text on target line"))
@@ -291,7 +300,7 @@ pub fn insert_backspace(p: HandlerInput) -> Result<HandlerOutput, String> {
             None => match itr.next_parent() {
                 Some(id) => id,
                 None => return Err(String::from("cannot backspace over first bullet")),
-            }
+            },
         };
         p.tree.delete()?;
         p.tree.activate(new_active)?;
@@ -303,7 +312,7 @@ pub fn insert_control_c(p: HandlerInput) -> Result<HandlerOutput, String> {
     let pos = p.cursor.pos();
     Ok(HandlerOutput {
         cursor: Some(Command(match p.raster.get(pos).unwrap() {
-            Text { .. } => CommandState { pos, col: pos.1 },
+            state if state.is_browsable() => CommandState { pos, col: pos.1 },
             Empty => {
                 // We are inserting at end so cursor is one past text
                 let pos = p
@@ -311,12 +320,9 @@ pub fn insert_control_c(p: HandlerInput) -> Result<HandlerOutput, String> {
                     .browser(pos)
                     .unwrap()
                     .go_wrap(Direction::Left, 1)?
-                    .map(|b| {
-                        if b.state().is_text() {
-                            b.pos()
-                        } else {
-                            panic!("insert cursor was out of bounds on ctrl-c")
-                        }
+                    .map(|b| match b.state() {
+                        Text { .. } => b.pos(),
+                        err => panic!("insert cursor was out of bounds on ctrl-c: {:?}", err),
                     });
                 CommandState { pos, col: pos.1 }
             }
@@ -327,7 +333,9 @@ pub fn insert_control_c(p: HandlerInput) -> Result<HandlerOutput, String> {
 }
 
 fn insert_arrow_keys(p: HandlerInput) -> Result<HandlerOutput, String> {
-    p.tree.get_mut_active_content().push_str(" USE VIM KEYBINDINGS YOU PLEB ");
+    p.tree
+        .get_mut_active_content()
+        .push_str(" USE VIM KEYBINDINGS YOU PLEB ");
     render_and_make_insert_output(p.tree, p.win, p.cursor.insert_state().offset)
 }
 
