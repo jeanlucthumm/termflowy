@@ -27,6 +27,7 @@ pub struct Editor {
     raster: Raster,
     command_map: HashMap<String, Handler>,
     insert_map: HashMap<String, Handler>,
+    sticky_key: Option<String>,
 }
 
 impl Editor {
@@ -48,6 +49,7 @@ impl Editor {
             raster,
             command_map: handlers::new_command_map(),
             insert_map: handlers::new_insert_map(),
+            sticky_key: None,
         }
     }
 
@@ -85,6 +87,7 @@ impl Editor {
         if let Some(handler) = self.command_map.get(key) {
             let output = (*handler)(HandlerInput {
                 key,
+                sticky_key: self.sticky_key.as_deref(),
                 cursor: self.cursor,
                 tree: &mut self.bullet_tree,
                 raster: &self.raster,
@@ -96,6 +99,7 @@ impl Editor {
             if let Some(raster) = output.raster {
                 self.raster = raster;
             }
+            self.sticky_key = output.sticky_key;
             Ok(())
         } else {
             Err(format!("unknown command key: {}", key))
@@ -106,6 +110,7 @@ impl Editor {
         if let Some(handler) = self.insert_map.get(key) {
             let output = (*handler)(HandlerInput {
                 key,
+                sticky_key: self.sticky_key.as_deref(),
                 cursor: self.cursor,
                 tree: &mut self.bullet_tree,
                 raster: &self.raster,
@@ -117,6 +122,7 @@ impl Editor {
             if let Some(raster) = output.raster {
                 self.raster = raster;
             }
+            self.sticky_key = output.sticky_key;
             Ok(())
         } else {
             let content = self.bullet_tree.get_mut_active_content();
@@ -182,6 +188,7 @@ pub type Handler = fn(HandlerInput) -> Result<HandlerOutput, String>;
 
 pub struct HandlerInput<'a> {
     pub key: &'a str,
+    pub sticky_key: Option<&'a str>,
     pub cursor: Cursor,
     pub tree: &'a mut tree::Tree,
     pub raster: &'a Raster,
@@ -191,4 +198,5 @@ pub struct HandlerInput<'a> {
 pub struct HandlerOutput {
     pub cursor: Option<Cursor>,
     pub raster: Option<Raster>,
+    pub sticky_key: Option<String>,
 }

@@ -61,6 +61,7 @@ pub fn command_i(p: HandlerInput) -> Result<HandlerOutput, String> {
             offset: p.tree.get_active_content().len() - offset,
         })),
         raster: None,
+        sticky_key: None,
     })
 }
 
@@ -69,7 +70,7 @@ pub fn command_hl(p: HandlerInput) -> Result<HandlerOutput, String> {
         "h" => Direction::Left,
         _ => Direction::Right,
     };
-    Ok(make_pos_command_output(
+    Ok(new_std_command_output(
         p.raster
             .browser(p.cursor.command_state().pos)
             .expect("")
@@ -84,7 +85,7 @@ pub fn command_jk(p: HandlerInput) -> Result<HandlerOutput, String> {
         _ => Direction::Up,
     };
     let cursor = p.cursor.command_state();
-    Ok(make_pos_command_output(
+    Ok(new_std_command_output(
         p.raster
             .browser(cursor.pos)
             .expect("")
@@ -129,7 +130,7 @@ pub fn command_bwe(p: HandlerInput) -> Result<HandlerOutput, String> {
     };
     if let Text { id, offset } = browser.state() {
         p.tree.activate(id)?;
-        Ok(make_pos_command_output(
+        Ok(new_std_command_output(
             jump_to_next_separator(
                 p.tree.get_active_content(),
                 offset,
@@ -159,24 +160,14 @@ pub fn command_shift_a(p: HandlerInput) -> Result<HandlerOutput, String> {
                 .unwrap()
                 .pos(),
         });
-    Ok(HandlerOutput {
-        cursor: Some(Insert(InsertState { pos, offset: 0 })),
-        raster: None,
-    })
+    Ok(new_std_insert_output(pos, 0))
 }
 
 pub fn command_o(p: HandlerInput) -> Result<HandlerOutput, String> {
     p.tree
         .activate(p.raster.get(p.cursor.pos()).unwrap().id())?;
     p.tree.create_sibling();
-    let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
-    Ok(HandlerOutput {
-        cursor: Some(Insert(InsertState {
-            pos: pos.unwrap(),
-            offset: 0,
-        })),
-        raster: Some(raster),
-    })
+    render_and_make_insert_output(p.tree, p.win, 0)
 }
 
 fn find_left_text(b: Browser, col: u32) -> Result<Point, String> {
@@ -260,10 +251,22 @@ fn jump_to_next_separator<'a>(
     Ok(browser.go_wrap(dir, (final_index - index as i32).abs() as u32)?)
 }
 
-fn make_pos_command_output(pos: Point) -> HandlerOutput {
+fn new_std_command_output(pos: Point) -> HandlerOutput {
     HandlerOutput {
         cursor: Some(Command(CommandState { pos, col: pos.1 })),
         raster: None,
+        sticky_key: None,
+    }
+}
+
+fn new_std_insert_output(pos: Point, offset: usize) -> HandlerOutput {
+    HandlerOutput {
+        cursor: Some(Insert(InsertState {
+            pos,
+            offset,
+        })),
+        raster: None,
+        sticky_key: None,
     }
 }
 
@@ -329,6 +332,7 @@ pub fn insert_control_c(p: HandlerInput) -> Result<HandlerOutput, String> {
             _ => panic!("insert cursor was out of bounds on ctrl-c"),
         })),
         raster: None,
+        sticky_key: None,
     })
 }
 
@@ -349,6 +353,7 @@ fn render_and_make_insert_output(
         Ok(HandlerOutput {
             cursor: Some(Insert(InsertState { offset, pos })),
             raster: Some(raster),
+            sticky_key: None,
         })
     } else {
         Err(String::from("tree could not find active bullet position"))
