@@ -3,8 +3,8 @@
 ///   ecept the handler for <C-c>
 use std::collections::HashMap;
 
-use crate::editor;
 use crate::editor::Cursor::*;
+use crate::editor::{self, Cursor};
 use crate::editor::{CommandState, HandlerInput, HandlerOutput, InsertState};
 use crate::raster::PixelState::*;
 use crate::raster::{Browser, Direction};
@@ -26,6 +26,7 @@ pub fn new_command_map() -> HashMap<String, editor::Handler> {
     map.insert(String::from("e"), command_bwe);
     map.insert(String::from("A"), command_shift_a);
     map.insert(String::from("o"), command_o);
+    map.insert(String::from("d"), command_d);
     map
 }
 
@@ -170,6 +171,26 @@ pub fn command_o(p: HandlerInput) -> Result<HandlerOutput, String> {
     render_and_make_insert_output(p.tree, p.win, 0)
 }
 
+pub fn command_d(p: HandlerInput) -> Result<HandlerOutput, String> {
+    let cursor = p.cursor.command_state();
+    match p.sticky_key {
+        Some("d") => {
+            let pixel_state = p.raster.get(cursor.pos).unwrap();
+            p.tree.activate(pixel_state.id())?;
+            p.tree.delete()?; // default active selection matches 'dd'
+            let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
+            let pos = find_left_text(raster.browser((pos.unwrap().0, cursor.col))?, cursor.col as u32)?;
+            Ok(HandlerOutput::new()
+                .set_cursor(Cursor::new_command(pos))
+                .set_raster(raster))
+        }
+        Some(_) => Ok(HandlerOutput::new().set_cursor(p.cursor)),
+        None => Ok(HandlerOutput::new()
+            .set_cursor(p.cursor)
+            .set_sticky_key(String::from("d"))),
+    }
+}
+
 fn find_left_text(b: Browser, col: u32) -> Result<Point, String> {
     if b.state().is_browsable() {
         Ok(b.pos())
@@ -261,10 +282,7 @@ fn new_std_command_output(pos: Point) -> HandlerOutput {
 
 fn new_std_insert_output(pos: Point, offset: usize) -> HandlerOutput {
     HandlerOutput {
-        cursor: Some(Insert(InsertState {
-            pos,
-            offset,
-        })),
+        cursor: Some(Insert(InsertState { pos, offset })),
         raster: None,
         sticky_key: None,
     }
