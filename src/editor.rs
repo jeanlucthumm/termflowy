@@ -163,9 +163,9 @@ pub enum Cursor {
 }
 
 impl Cursor {
-    pub fn pos(&self) -> Point {
+    pub fn pos(self) -> Point {
         match self {
-            Command(CommandState { pos, .. }) | Insert(InsertState { pos, .. }) => *pos,
+            Command(CommandState { pos, .. }) | Insert(InsertState { pos, .. }) => pos,
         }
     }
 
@@ -181,6 +181,14 @@ impl Cursor {
             Insert(state) => state,
             _ => panic!("assumed cursor was insert but it was not"),
         }
+    }
+
+    pub fn new_command(pos: Point) -> Cursor {
+        Command(CommandState { pos, col: pos.1 })
+    }
+
+    pub fn new_insert(pos: Point) -> Cursor {
+        Insert(InsertState { pos, offset: 0 })
     }
 }
 
@@ -199,4 +207,29 @@ pub struct HandlerOutput {
     pub cursor: Option<Cursor>,
     pub raster: Option<Raster>,
     pub sticky_key: Option<String>,
+}
+
+impl HandlerOutput {
+    pub fn new() -> HandlerOutput {
+        HandlerOutput {
+            cursor: None,
+            raster: None,
+            sticky_key: None,
+        }
+    }
+
+    pub fn set_cursor(mut self, cursor: Cursor) -> HandlerOutput {
+        self.cursor = Some(cursor);
+        self
+    }
+
+    pub fn set_raster(mut self, raster: Raster) -> HandlerOutput {
+        self.raster = Some(raster);
+        self
+    }
+
+    pub fn set_sticky_key(mut self, key: String) -> HandlerOutput {
+        self.sticky_key = Some(key);
+        self
+    }
 }
