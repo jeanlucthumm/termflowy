@@ -33,6 +33,13 @@ pub trait Window {
 
 pub struct NCurses(pub n::WINDOW);
 
+impl NCurses {
+    pub fn new(win: n::WINDOW) -> NCurses {
+        n::keypad(win, true);
+        NCurses(win)
+    }
+}
+
 impl Window for NCurses {
     fn get_max_yx(&self) -> (i32, i32) {
         let mut y: i32 = 0;
@@ -357,9 +364,7 @@ impl Display for TestWindow {
         write!(
             f,
             "TestWindow max: {:?} pos: {:?}\n{}",
-            self.max,
-            self.pos,
-            buffer,
+            self.max, self.pos, buffer,
         )
     }
 }
@@ -412,7 +417,7 @@ impl Window for TestWindow {
         }
     }
 
-    fn getch(&self) -> String { 
+    fn getch(&self) -> String {
         panic!("test window has no function getch since it does not receive input")
     }
 }

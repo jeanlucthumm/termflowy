@@ -67,8 +67,8 @@ fn main() {
     let bounds = render::get_screen_bounds();
 
     let mut window_store = render::WindowStore {
-        editor: Box::new(NCurses(render::create_window(bounds.0 - 2, bounds.1, 0, 0))),
-        status: Box::new(NCurses(render::create_window(1, bounds.1, bounds.0 - 1, 0))),
+        editor: Box::new(NCurses::new(render::create_window(bounds.0 - 2, bounds.1, 0, 0))),
+        status: Box::new(NCurses::new(render::create_window(1, bounds.1, bounds.0 - 1, 0))),
     };
     let editor = Editor::new(window_store.editor.as_mut());
     let stats = main_loop(&mut window_store, editor);
