@@ -28,6 +28,7 @@ pub trait Window {
     fn addch(&mut self, c: char);
     fn move_addstr(&mut self, pos: Point, s: &str);
     fn refresh(&self);
+    fn getch(&self) -> String;
 }
 
 pub struct NCurses(pub n::WINDOW);
@@ -66,6 +67,10 @@ impl Window for NCurses {
     fn refresh(&self) {
         n::wrefresh(self.0);
     }
+
+    fn getch(&self) -> String {
+        n::keyname(n::wgetch(self.0)).expect("wgetch returned unexpected value for keyname")
+    }
 }
 
 pub fn setup_ncurses() {
@@ -88,7 +93,7 @@ pub fn get_screen_bounds() -> (i32, i32) {
 }
 
 pub fn create_window(h: i32, w: i32, y: i32, x: i32) -> n::WINDOW {
-    n::subwin(n::stdscr(), h, w, y, x)
+    n::newwin(h, w, y, x)
 }
 
 pub fn clear_remaining(win: &mut dyn Window) -> usize {
@@ -405,6 +410,10 @@ impl Window for TestWindow {
         if self.print_on_refresh {
             self.print();
         }
+    }
+
+    fn getch(&self) -> String { 
+        panic!("test window has no function getch since it does not receive input")
     }
 }
 

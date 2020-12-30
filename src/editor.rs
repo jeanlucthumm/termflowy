@@ -22,7 +22,6 @@ impl tree::IdGenerator for IdGen {
 
 pub struct Editor {
     bullet_tree: tree::Tree,
-    win: Box<dyn Window>,
     cursor: Cursor,
     raster: Raster,
     command_map: HashMap<String, Handler>,
@@ -31,9 +30,9 @@ pub struct Editor {
 }
 
 impl Editor {
-    pub fn new(mut win: Box<dyn Window>) -> Editor {
+    pub fn new(win: &mut dyn Window) -> Editor {
         let tree = tree::Tree::new(Box::new(IdGen { current: 1 }));
-        let (raster, cursor) = render::tree_render(&mut *win, tree.root_iter(), 0, 0);
+        let (raster, cursor) = render::tree_render(win, tree.root_iter(), 0, 0);
         let cursor = match cursor {
             Some(pos) => Insert(InsertState { pos, offset: 0 }),
             None => Command(CommandState {
@@ -44,7 +43,6 @@ impl Editor {
         win.move_cursor(cursor.pos());
         Editor {
             bullet_tree: tree,
-            win,
             cursor,
             raster,
             command_map: handlers::new_command_map(),
@@ -53,37 +51,32 @@ impl Editor {
         }
     }
 
-    pub fn update(&mut self, key: &str) -> PanelUpdate {
+    pub fn update(&mut self, key: &str, win: &mut dyn Window) -> PanelUpdate {
         let mut status_msg = String::new();
         match self.cursor {
             Command(_) => {
-                if let Err(msg) = self.on_command_key_press(&key) {
+                if let Err(msg) = self.on_command_key_press(&key, win) {
                     status_msg = msg;
                 }
             }
             Insert(_) => {
-                if let Err(msg) = self.on_insert_key_press(&key) {
+                if let Err(msg) = self.on_insert_key_press(&key, win) {
                     status_msg = msg;
                 }
             }
         }
-        self.win.move_cursor(self.cursor.pos());
+        win.move_cursor(self.cursor.pos());
         PanelUpdate {
             should_quit: false,
             status_msg,
         }
     }
 
-    pub fn focus(&mut self) {
-        self.win.move_cursor(self.cursor.pos());
-        self.win.refresh();
-    }
-
     pub fn cursor(&self) -> Cursor {
         self.cursor
     }
 
-    fn on_command_key_press(&mut self, key: &str) -> Result<(), String> {
+    fn on_command_key_press(&mut self, key: &str, win: &mut dyn Window) -> Result<(), String> {
         if let Some(handler) = self.command_map.get(key) {
             let output = (*handler)(HandlerInput {
                 key,
@@ -91,7 +84,7 @@ impl Editor {
                 cursor: self.cursor,
                 tree: &mut self.bullet_tree,
                 raster: &self.raster,
-                win: &mut *self.win,
+                win,
             })?;
             if let Some(cursor) = output.cursor {
                 self.cursor = cursor;
@@ -106,7 +99,7 @@ impl Editor {
         }
     }
 
-    fn on_insert_key_press(&mut self, key: &str) -> Result<(), String> {
+    fn on_insert_key_press(&mut self, key: &str, win: &mut dyn Window) -> Result<(), String> {
         if let Some(handler) = self.insert_map.get(key) {
             let output = (*handler)(HandlerInput {
                 key,
@@ -114,7 +107,7 @@ impl Editor {
                 cursor: self.cursor,
                 tree: &mut self.bullet_tree,
                 raster: &self.raster,
-                win: &mut *self.win,
+                win,
             })?;
             if let Some(cursor) = output.cursor {
                 self.cursor = cursor;
@@ -129,16 +122,19 @@ impl Editor {
             let cursor = self.cursor.insert_state();
             content.insert_str(content.len() - cursor.offset, &key);
             let (raster, pos) = tree_render(
-                self.win.as_mut(),
+                win,
                 self.bullet_tree.root_iter(),
                 0,
                 cursor.offset,
             );
+            let pos = pos.unwrap();
             self.raster = raster;
             self.cursor = Insert(InsertState {
-                pos: pos.unwrap(),
+                pos,
                 offset: cursor.offset,
             });
+            win.move_cursor(pos);
+            win.refresh();
             Ok(())
         }
     }
