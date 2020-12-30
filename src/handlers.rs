@@ -26,6 +26,7 @@ pub fn new_command_map() -> HashMap<String, editor::Handler> {
     map.insert(String::from("e"), command_bwe);
     map.insert(String::from("A"), command_shift_a);
     map.insert(String::from("o"), command_o);
+    map.insert(String::from("O"), command_shift_o);
     map.insert(String::from("d"), command_d);
     map
 }
@@ -170,6 +171,14 @@ pub fn command_o(p: HandlerInput) -> Result<HandlerOutput, String> {
     p.tree.create_sibling();
     render_and_make_insert_output(p.tree, p.win, 0)
 }
+
+pub fn command_shift_o(p: HandlerInput) -> Result<HandlerOutput, String> {
+    p.tree
+        .activate(p.raster.get(p.cursor.pos()).unwrap().id())?;
+    p.tree.create_sibling_above();
+    render_and_make_insert_output(p.tree, p.win, 0)
+}
+
 
 pub fn command_d(p: HandlerInput) -> Result<HandlerOutput, String> {
     let cursor = p.cursor.command_state();

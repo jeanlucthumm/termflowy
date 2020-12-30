@@ -34,18 +34,39 @@ impl Tree {
         }
     }
 
-    /// Create another bullet at the same level, i.e. a sibling of the active node
+    pub fn create_sibling_above(&mut self) {
+        self.insert_new_node(false)
+    }
+
     pub fn create_sibling(&mut self) {
+        self.insert_new_node(true);
+    }
+
+    fn insert_new_node(&mut self, below: bool) {
         let active = self.nodes.get(&self.active).unwrap();
         let active_id = active.id;
         let mut node = Node::new(self.generator.gen(), active.parent);
-        node.sibling = Some(active.id);
+        node.sibling = match below {
+            true => Some(active.id),
+            false => active.sibling,
+        };
+        if !below {
+            let active = self.nodes.get_mut(&self.active).unwrap();
+            active.sibling = Some(node.id);
+        }
 
         let parent = self.nodes.get_mut(&node.parent.unwrap()).unwrap();
-        let down_sibling_id;
+        let down_sibling_id; // sibling beneath active
         if let Some(index) = parent.children.iter().position(|id| *id == active_id) {
-            down_sibling_id = parent.children.get(index + 1).cloned();
-            parent.children.insert(index + 1, node.id);
+            down_sibling_id = match below {
+                true => parent.children.get(index + 1).cloned(),
+                false => None, // sibling ids only point up
+            };
+            let insert_index = match below {
+                true => index + 1,
+                false => index,
+            };
+            parent.children.insert(insert_index, node.id);
         } else {
             panic!("child not found in its own parent")
         }
@@ -184,7 +205,11 @@ impl Tree {
     }
 
     pub fn active_iter(&self) -> NodeIterator {
-        NodeIterator::new(self.nodes.get(&self.active).unwrap(), &self.nodes, self.active)
+        NodeIterator::new(
+            self.nodes.get(&self.active).unwrap(),
+            &self.nodes,
+            self.active,
+        )
     }
 }
 
@@ -405,7 +430,15 @@ mod tests {
         tree.create_sibling(); // id = 3
         tree.delete().unwrap(); // id 3 deleted
         assert!(tree.nodes.get(&3).is_none());
-        assert_eq!(tree.nodes.get(&0).unwrap().children.iter().any(|id| *id == 3), false);
+        assert_eq!(
+            tree.nodes
+                .get(&0)
+                .unwrap()
+                .children
+                .iter()
+                .any(|id| *id == 3),
+            false
+        );
     }
 
     #[test]
@@ -416,7 +449,15 @@ mod tests {
         tree.activate(2).unwrap();
         tree.delete().unwrap();
         assert!(tree.nodes.get(&2).is_none());
-        assert_eq!(tree.nodes.get(&0).unwrap().children.iter().any(|id| *id == 2), false);
+        assert_eq!(
+            tree.nodes
+                .get(&0)
+                .unwrap()
+                .children
+                .iter()
+                .any(|id| *id == 2),
+            false
+        );
         assert_eq!(tree.nodes.get(&3).unwrap().sibling, Some(1));
     }
 
@@ -441,7 +482,15 @@ mod tests {
         assert!(tree.nodes.get(&5).is_none());
         assert!(tree.nodes.get(&6).is_none());
         assert!(tree.nodes.get(&7).is_none());
-        assert_eq!(tree.nodes.get(&0).unwrap().children.iter().any(|id| *id == 2), false);
+        assert_eq!(
+            tree.nodes
+                .get(&0)
+                .unwrap()
+                .children
+                .iter()
+                .any(|id| *id == 2),
+            false
+        );
     }
 
     #[test]
@@ -472,5 +521,30 @@ mod tests {
         tree.activate(4).unwrap();
         tree.delete().unwrap();
         assert_eq!(tree.active, 5);
+    }
+
+    #[test]
+    fn create_sibling_above_test() {
+        let mut tree = new_test_tree();
+
+        tree.create_sibling_above(); // id = 2
+        tree.create_sibling_above(); // id = 3
+        tree.create_sibling_above(); // id = 4
+        tree.activate(1).unwrap();
+        tree.indent().unwrap(); // 1 under 2
+        tree.create_sibling_above(); // id = 5
+        tree.create_sibling(); // id = 6
+
+        // 4. --
+        // 3. --
+        // 2. --
+        //      5. --
+        //      6. --
+        //      1. --
+
+        let root = tree.nodes.get(&0).unwrap();
+        assert_eq!(root.children, [4, 3, 2]);
+        let two = tree.nodes.get(&2).unwrap();
+        assert_eq!(two.children, [5, 6, 1]);
     }
 }
