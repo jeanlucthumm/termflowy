@@ -5,7 +5,7 @@
 use crate::{render::NCurses, status::render_status};
 use editor::Editor;
 use ncurses as n;
-use std::time::{Duration, Instant};
+use std::{panic, time::{Duration, Instant}};
 
 mod editor;
 mod handlers;
@@ -57,6 +57,12 @@ fn main_loop(wins: &mut render::WindowStore, mut e: Editor) -> RenderStats {
 
 fn main() {
     render::setup_ncurses();
+    let default_hook = panic::take_hook(); 
+    panic::set_hook(Box::new(move |info| {
+        n::endwin();
+        n::delscreen(n::stdscr());
+        default_hook(info);
+    }));
 
     let bounds = render::get_screen_bounds();
 
