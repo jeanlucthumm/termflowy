@@ -179,17 +179,41 @@ impl Tree {
             self.active = parent_id;
         }
 
-        self.delete_subtree_ids(active_id);
+        self.delete_ids_recursive(active_id);
 
         Ok(())
     }
 
-    fn delete_subtree_ids(&mut self, id: i32) {
-        let children = self.nodes.get(&id).unwrap().children.clone();
-        for i in children {
-            self.delete_subtree_ids(i);
+    fn delete_ids_recursive(&mut self, id: i32) {
+        for i in self.nodes.get(&id).unwrap().children.clone() {
+            self.delete_ids_recursive(i);
         }
         self.nodes.remove(&id);
+    }
+
+    fn get_ids_recursive(&self, id: i32) -> Vec<i32> {
+        let mut ids: Vec<i32> = Vec::new();
+        ids.push(id);
+        for i in self.nodes.get(&id).unwrap().children.clone() {
+            ids.append(&mut self.get_ids_recursive(i));
+        }
+        ids
+    }
+
+    pub fn get_subtree(&self) -> Subtree {
+        let mut nodes = NodeMap::new();
+        let ids = self.get_ids_recursive(self.active);
+        for i in ids {
+            let node = self.nodes.get(&i).unwrap();
+            nodes.insert(i, (*node).clone());
+        }
+        let root = nodes.get_mut(&self.active).unwrap();
+        root.sibling = None;
+        root.parent = None;
+        Subtree {
+            root: self.active,
+            nodes,
+        }
     }
 
     pub fn get_mut_active_content(&mut self) -> &mut String {
@@ -214,6 +238,12 @@ impl Tree {
 }
 
 #[derive(Debug)]
+pub struct Subtree {
+    root: i32,
+    nodes: NodeMap,
+}
+
+#[derive(Debug, Clone)]
 struct Node {
     id: i32,
     parent: Option<i32>,
@@ -546,5 +576,24 @@ mod tests {
         assert_eq!(root.children, [4, 3, 2]);
         let two = tree.nodes.get(&2).unwrap();
         assert_eq!(two.children, [5, 6, 1]);
+    }
+
+    #[test]
+    fn get_subtree_test() {
+        let mut tree = new_test_tree();
+
+        tree.create_sibling(); // id = 2
+        tree.indent().unwrap(); // 2 under 1
+        tree.create_sibling(); // id = 3 under 1
+        tree.create_sibling(); // id = 4 under 1
+        tree.create_sibling(); // id = 5 under 1
+
+        tree.activate(1).unwrap();
+        let subtree = tree.get_subtree();
+        assert_eq!(subtree.root, 1);
+        let root = subtree.nodes.get(&subtree.root).unwrap();
+        assert_eq!(root.children, [2, 3, 4, 5]);
+        assert_eq!(root.sibling, None);
+        assert_eq!(root.parent, None);
     }
 }
