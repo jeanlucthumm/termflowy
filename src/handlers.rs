@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use crate::editor::Cursor::*;
-use crate::editor::{self, Cursor};
+use crate::editor::{self, Clipboard, Cursor};
 use crate::editor::{CommandState, HandlerInput, HandlerOutput, InsertState};
 use crate::raster::PixelState::*;
 use crate::raster::{Browser, Direction};
@@ -57,14 +57,10 @@ pub fn command_i(p: HandlerInput) -> Result<HandlerOutput, String> {
         ),
     };
     p.tree.activate(id)?;
-    Ok(HandlerOutput {
-        cursor: Some(Insert(InsertState {
-            pos: cursor.pos,
-            offset: p.tree.get_active_content().len() - offset,
-        })),
-        raster: None,
-        sticky_key: None,
-    })
+    Ok(HandlerOutput::new().set_cursor(Insert(InsertState {
+        pos: cursor.pos,
+        offset: p.tree.get_active_content().len() - offset,
+    })))
 }
 
 pub fn command_hl(p: HandlerInput) -> Result<HandlerOutput, String> {
@@ -72,13 +68,13 @@ pub fn command_hl(p: HandlerInput) -> Result<HandlerOutput, String> {
         "h" => Direction::Left,
         _ => Direction::Right,
     };
-    Ok(new_std_command_output(
-        p.raster
-            .browser(p.cursor.command_state().pos)
-            .expect("")
-            .go_while(direction, |state| !state.is_browsable())?
-            .pos(),
-    ))
+    let pos = p
+        .raster
+        .browser(p.cursor.command_state().pos)
+        .expect("")
+        .go_while(direction, |state| !state.is_browsable())?
+        .pos();
+    Ok(HandlerOutput::new().set_cursor(Cursor::new_command(pos)))
 }
 
 pub fn command_jk(p: HandlerInput) -> Result<HandlerOutput, String> {
@@ -87,19 +83,19 @@ pub fn command_jk(p: HandlerInput) -> Result<HandlerOutput, String> {
         _ => Direction::Up,
     };
     let cursor = p.cursor.command_state();
-    Ok(new_std_command_output(
-        p.raster
-            .browser(cursor.pos)
-            .expect("")
-            .go_no_wrap(direction, 1)?
-            .go_no_wrap(
-                Direction::Right,
-                (cursor.col as u32)
-                    .checked_sub(cursor.pos.1 as u32)
-                    .expect("y pos should never be bigger than col"),
-            )?
-            .map(|b| find_left_text(b, cursor.pos.1 as u32))?,
-    ))
+    let pos = p
+        .raster
+        .browser(cursor.pos)
+        .expect("")
+        .go_no_wrap(direction, 1)?
+        .go_no_wrap(
+            Direction::Right,
+            (cursor.col as u32)
+                .checked_sub(cursor.pos.1 as u32)
+                .expect("y pos should never be bigger than col"),
+        )?
+        .map(|b| find_left_text(b, cursor.pos.1 as u32))?;
+    Ok(HandlerOutput::new().set_cursor(Cursor::new_command(pos)))
 }
 
 pub fn command_bwe(p: HandlerInput) -> Result<HandlerOutput, String> {
@@ -132,17 +128,16 @@ pub fn command_bwe(p: HandlerInput) -> Result<HandlerOutput, String> {
     };
     if let Text { id, offset } = browser.state() {
         p.tree.activate(id)?;
-        Ok(new_std_command_output(
-            jump_to_next_separator(
-                p.tree.get_active_content(),
-                offset,
-                dir,
-                final_offset,
-                &SEPARATORS,
-                browser,
-            )?
-            .pos(),
-        ))
+        let pos = jump_to_next_separator(
+            p.tree.get_active_content(),
+            offset,
+            dir,
+            final_offset,
+            &SEPARATORS,
+            browser,
+        )?
+        .pos();
+        Ok(HandlerOutput::new().set_cursor(Cursor::new_command(pos)))
     } else {
         panic!();
     }
@@ -162,7 +157,7 @@ pub fn command_shift_a(p: HandlerInput) -> Result<HandlerOutput, String> {
                 .unwrap()
                 .pos(),
         });
-    Ok(new_std_insert_output(pos, 0))
+    Ok(HandlerOutput::new().set_cursor(Cursor::new_insert(pos)))
 }
 
 pub fn command_o(p: HandlerInput) -> Result<HandlerOutput, String> {
@@ -179,7 +174,6 @@ pub fn command_shift_o(p: HandlerInput) -> Result<HandlerOutput, String> {
     render_and_make_insert_output(p.tree, p.win, 0)
 }
 
-
 pub fn command_d(p: HandlerInput) -> Result<HandlerOutput, String> {
     let cursor = p.cursor.command_state();
     match p.sticky_key {
@@ -188,10 +182,28 @@ pub fn command_d(p: HandlerInput) -> Result<HandlerOutput, String> {
             p.tree.activate(pixel_state.id())?;
             p.tree.delete()?; // default active selection matches 'dd'
             let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
-            let pos = find_left_text(raster.browser((pos.unwrap().0, cursor.col))?, cursor.col as u32)?;
+            let pos = find_left_text(
+                raster.browser((pos.unwrap().0, cursor.col))?,
+                cursor.col as u32,
+            )?;
             Ok(HandlerOutput::new()
                 .set_cursor(Cursor::new_command(pos))
                 .set_raster(raster))
+        }
+        Some(_) => Ok(HandlerOutput::new().set_cursor(p.cursor)),
+        None => Ok(HandlerOutput::new()
+            .set_cursor(p.cursor)
+            .set_sticky_key(String::from("d"))),
+    }
+}
+
+pub fn command_y(p: HandlerInput) -> Result<HandlerOutput, String> {
+    let cursor = p.cursor.command_state();
+    match p.sticky_key {
+        Some("y") => {
+            let pixel_state = p.raster.get(cursor.pos).unwrap();
+            p.tree.activate(pixel_state.id())?;
+            Ok(HandlerOutput::new().set_clipboard(Clipboard::Tree(p.tree.get_subtree())))
         }
         Some(_) => Ok(HandlerOutput::new().set_cursor(p.cursor)),
         None => Ok(HandlerOutput::new()
@@ -281,22 +293,6 @@ fn jump_to_next_separator<'a>(
     Ok(browser.go_wrap(dir, (final_index - index as i32).abs() as u32)?)
 }
 
-fn new_std_command_output(pos: Point) -> HandlerOutput {
-    HandlerOutput {
-        cursor: Some(Command(CommandState { pos, col: pos.1 })),
-        raster: None,
-        sticky_key: None,
-    }
-}
-
-fn new_std_insert_output(pos: Point, offset: usize) -> HandlerOutput {
-    HandlerOutput {
-        cursor: Some(Insert(InsertState { pos, offset })),
-        raster: None,
-        sticky_key: None,
-    }
-}
-
 pub fn insert_tab(p: HandlerInput) -> Result<HandlerOutput, String> {
     p.tree.indent()?;
     render_and_make_insert_output(p.tree, p.win, 0)
@@ -340,8 +336,8 @@ pub fn insert_backspace(p: HandlerInput) -> Result<HandlerOutput, String> {
 
 pub fn insert_control_c(p: HandlerInput) -> Result<HandlerOutput, String> {
     let pos = p.cursor.pos();
-    Ok(HandlerOutput {
-        cursor: Some(Command(match p.raster.get(pos).unwrap() {
+    Ok(
+        HandlerOutput::new().set_cursor(Command(match p.raster.get(pos).unwrap() {
             state if state.is_browsable() => CommandState { pos, col: pos.1 },
             Empty => {
                 // We are inserting at end so cursor is one past text
@@ -358,9 +354,7 @@ pub fn insert_control_c(p: HandlerInput) -> Result<HandlerOutput, String> {
             }
             _ => panic!("insert cursor was out of bounds on ctrl-c"),
         })),
-        raster: None,
-        sticky_key: None,
-    })
+    )
 }
 
 fn insert_arrow_keys(p: HandlerInput) -> Result<HandlerOutput, String> {
@@ -377,11 +371,9 @@ fn render_and_make_insert_output(
 ) -> Result<HandlerOutput, String> {
     let (raster, pos) = render::tree_render(win, tree.root_iter(), 0, 0);
     if let Some(pos) = pos {
-        Ok(HandlerOutput {
-            cursor: Some(Insert(InsertState { offset, pos })),
-            raster: Some(raster),
-            sticky_key: None,
-        })
+        Ok(HandlerOutput::new()
+            .set_cursor(Insert(InsertState { offset, pos }))
+            .set_raster(raster))
     } else {
         Err(String::from("tree could not find active bullet position"))
     }

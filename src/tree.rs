@@ -35,17 +35,25 @@ impl Tree {
     }
 
     pub fn create_sibling_above(&mut self) {
-        self.insert_new_node(false)
+        let node = Node::new(self.generator.gen(), None);
+        self.insert_node(node, false);
     }
 
     pub fn create_sibling(&mut self) {
-        self.insert_new_node(true);
+        let node = Node::new(self.generator.gen(), None);
+        self.insert_node(node, true);
     }
 
-    fn insert_new_node(&mut self, below: bool) {
+    fn insert_subtree(&mut self, mut subtree: Subtree, below: bool) {
+        let root = subtree.nodes.remove(&subtree.root).unwrap();
+        self.insert_node(root, below);
+        todo!();
+    }
+
+    fn insert_node(&mut self, mut node: Node, below: bool) {
         let active = self.nodes.get(&self.active).unwrap();
         let active_id = active.id;
-        let mut node = Node::new(self.generator.gen(), active.parent);
+        node.parent = Some(active.parent.unwrap());
         node.sibling = match below {
             true => Some(active.id),
             false => active.sibling,

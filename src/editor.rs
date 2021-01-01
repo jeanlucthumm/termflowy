@@ -198,6 +198,7 @@ pub struct HandlerOutput {
     pub cursor: Option<Cursor>,
     pub raster: Option<Raster>,
     pub sticky_key: Option<String>,
+    pub clipboard: Option<Clipboard>,
 }
 
 impl HandlerOutput {
@@ -206,6 +207,7 @@ impl HandlerOutput {
             cursor: None,
             raster: None,
             sticky_key: None,
+            clipboard: None,
         }
     }
 
@@ -223,4 +225,13 @@ impl HandlerOutput {
         self.sticky_key = Some(key);
         self
     }
+
+    pub fn set_clipboard(mut self, clipboard: Clipboard) -> HandlerOutput {
+        self.clipboard = Some(clipboard);
+        self
+    }
+}
+
+pub enum Clipboard {
+    Tree(tree::Subtree),
 }
