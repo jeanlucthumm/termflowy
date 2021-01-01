@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::Cell, collections::HashMap};
 
 use render::Point;
 use Cursor::*;
@@ -11,12 +11,12 @@ use crate::{render, PanelUpdate};
 const ERR_BOUNDS: &str = "cursor position was out of bounds";
 
 struct IdGen {
-    current: i32,
+    current: Cell<i32>,
 }
 
 impl tree::IdGenerator for IdGen {
-    fn gen(&mut self) -> i32 {
-        (self.current, self.current += 1).0
+    fn gen(&self) -> i32 {
+        (self.current.get(), self.current.set(self.current.get() + 1)).0
     }
 }
 
@@ -31,7 +31,7 @@ pub struct Editor {
 
 impl Editor {
     pub fn new(win: &mut dyn Window) -> Editor {
-        let tree = tree::Tree::new(Box::new(IdGen { current: 1 }));
+        let tree = tree::Tree::new(Box::new(IdGen { current: Cell::new(1) }));
         let (raster, cursor) = render::tree_render(win, tree.root_iter(), 0, 0);
         let cursor = match cursor {
             Some(pos) => Insert(InsertState { pos, offset: 0 }),
@@ -121,12 +121,7 @@ impl Editor {
             let content = self.bullet_tree.get_mut_active_content();
             let cursor = self.cursor.insert_state();
             content.insert_str(content.len() - cursor.offset, &key);
-            let (raster, pos) = tree_render(
-                win,
-                self.bullet_tree.root_iter(),
-                0,
-                cursor.offset,
-            );
+            let (raster, pos) = tree_render(win, self.bullet_tree.root_iter(), 0, cursor.offset);
             let pos = pos.unwrap();
             self.raster = raster;
             self.cursor = Insert(InsertState {

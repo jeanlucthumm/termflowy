@@ -3,7 +3,7 @@ use std::collections::HashMap;
 type NodeMap = HashMap<i32, Node>;
 
 pub trait IdGenerator {
-    fn gen(&mut self) -> i32;
+    fn gen(&self) -> i32;
 }
 
 /// Invariants:
@@ -11,7 +11,7 @@ pub trait IdGenerator {
 /// - The active node is never the root node
 /// - There is at least one root node and one child of the root node
 /// - No two nodes have the same id
-/// - All nodes but root have a parent
+/// - All nodes but root nodes have a parent
 pub struct Tree {
     active: i32,
     nodes: NodeMap,
@@ -19,7 +19,7 @@ pub struct Tree {
 }
 
 impl Tree {
-    pub fn new(mut generator: Box<dyn IdGenerator>) -> Tree {
+    pub fn new(generator: Box<dyn IdGenerator>) -> Tree {
         let mut nodes = NodeMap::new();
         let id = generator.gen();
         let mut root = Node::new(0, None);
@@ -203,15 +203,32 @@ impl Tree {
     pub fn get_subtree(&self) -> Subtree {
         let mut nodes = NodeMap::new();
         let ids = self.get_ids_recursive(self.active);
-        for i in ids {
-            let node = self.nodes.get(&i).unwrap();
-            nodes.insert(i, (*node).clone());
+        let mut mapped_ids = HashMap::new(); // subtree must contain unique ids
+        for i in &ids {
+            mapped_ids.insert(*i, self.generator.gen());
         }
-        let root = nodes.get_mut(&self.active).unwrap();
-        root.sibling = None;
-        root.parent = None;
+        let mut root = None;
+        for i in &ids {
+            let mut node = self.nodes.get(&i).cloned().unwrap();
+            if node.id == self.active {
+                node.id = *mapped_ids.get(&node.id).unwrap();
+                node.parent = None;
+                node.sibling = None;
+                root = Some(node.id);
+            } else {
+                node.id = *mapped_ids.get(&node.id).unwrap();
+                node.parent = node.parent.map(|v| *mapped_ids.get(&v).unwrap());
+                node.sibling = node.sibling.map(|v| *mapped_ids.get(&v).unwrap());
+            }
+            node.children = node
+                .children
+                .iter()
+                .map(|v| *mapped_ids.get(&v).unwrap())
+                .collect();
+            nodes.insert(node.id, node.clone());
+        }
         Subtree {
-            root: self.active,
+            root: root.expect("could not find root while parsing subtree"),
             nodes,
         }
     }
@@ -287,7 +304,7 @@ impl<'a> NodeIterator<'a> {
         self.current.id
     }
 
-    pub fn children_iter(&self) -> impl Iterator<Item = NodeIterator> {
+    pub fn children_iter(&self) -> impl Iterator<Item=NodeIterator> {
         self.current
             .children
             .iter()
@@ -323,21 +340,25 @@ impl<'a> NodeIterator<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::*;
 
     struct TestGen {
-        current: i32,
+        current: Cell<i32>,
     }
 
     impl TestGen {
         fn new() -> TestGen {
-            TestGen { current: 1 }
+            TestGen {
+                current: Cell::new(1),
+            }
         }
     }
 
     impl IdGenerator for TestGen {
-        fn gen(&mut self) -> i32 {
-            (self.current, self.current += 1).0
+        fn gen(&self) -> i32 {
+            (self.current.get(), self.current.set(self.current.get() + 1)).0
         }
     }
 
@@ -590,9 +611,11 @@ mod tests {
 
         tree.activate(1).unwrap();
         let subtree = tree.get_subtree();
-        assert_eq!(subtree.root, 1);
+
+        // Note that new ids should have been generated
+        assert_eq!(subtree.root, 6);
         let root = subtree.nodes.get(&subtree.root).unwrap();
-        assert_eq!(root.children, [2, 3, 4, 5]);
+        assert_eq!(root.children, [7, 8, 9, 10]);
         assert_eq!(root.sibling, None);
         assert_eq!(root.parent, None);
     }

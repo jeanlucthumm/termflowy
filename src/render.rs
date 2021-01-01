@@ -458,21 +458,23 @@ pub mod debug {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::*;
 
     struct TestIdGen {
-        counter: i32,
+        counter: Cell<i32>,
     }
 
     impl TestIdGen {
         fn new() -> TestIdGen {
-            TestIdGen { counter: 1 }
+            TestIdGen { counter: Cell::new(1) }
         }
     }
 
     impl tree::IdGenerator for TestIdGen {
-        fn gen(&mut self) -> i32 {
-            (self.counter, self.counter += 1).0
+        fn gen(&self) -> i32 {
+            (self.counter.get(), self.counter.set(self.counter.get() + 1)).0
         }
     }
 
