@@ -28,6 +28,9 @@ pub fn new_command_map() -> HashMap<String, editor::Handler> {
     map.insert(String::from("o"), command_o);
     map.insert(String::from("O"), command_shift_o);
     map.insert(String::from("d"), command_d);
+    map.insert(String::from("y"), command_y);
+    map.insert(String::from("p"), command_p_shift_p);
+    map.insert(String::from("P"), command_p_shift_p);
     map
 }
 
@@ -208,8 +211,31 @@ pub fn command_y(p: HandlerInput) -> Result<HandlerOutput, String> {
         Some(_) => Ok(HandlerOutput::new().set_cursor(p.cursor)),
         None => Ok(HandlerOutput::new()
             .set_cursor(p.cursor)
-            .set_sticky_key(String::from("d"))),
+            .set_sticky_key(String::from("y"))),
     }
+}
+
+pub fn command_p_shift_p(p: HandlerInput) -> Result<HandlerOutput, String> {
+    let cursor = p.cursor.command_state();
+    p.tree.activate(p.raster.get(cursor.pos).unwrap().id())?;
+    let below = match p.key {
+        "p" => true,
+        "P" => false,
+        _ => panic!("wrong key passed to handler, check table"),
+    };
+    match p.clipboard {
+        Some(Clipboard::Tree(subtree)) => {
+            p.tree.insert_subtree(subtree.clone(), below);
+        }
+        None => {
+            return Err(String::from("nothing to paste"));
+        }
+    };
+    let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
+    let pos = pos.unwrap();
+    Ok(HandlerOutput::new()
+        .set_cursor(Cursor::new_command(pos))
+        .set_raster(raster))
 }
 
 fn find_left_text(b: Browser, col: u32) -> Result<Point, String> {

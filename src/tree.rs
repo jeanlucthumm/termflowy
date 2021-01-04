@@ -44,10 +44,14 @@ impl Tree {
         self.insert_node(node, true);
     }
 
-    fn insert_subtree(&mut self, mut subtree: Subtree, below: bool) {
+    // Should only insert subtrees that originated from this tree because of IdGen
+    pub fn insert_subtree(&mut self, mut subtree: Subtree, below: bool) {
         let root = subtree.nodes.remove(&subtree.root).unwrap();
         self.insert_node(root, below);
-        todo!();
+        for (id, node) in subtree.nodes {
+            // No need to use |insert_node| since subtree is isolated
+            self.nodes.insert(id, node);
+        }
     }
 
     fn insert_node(&mut self, mut node: Node, below: bool) {
@@ -262,7 +266,7 @@ impl Tree {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Subtree {
     root: i32,
     nodes: NodeMap,

@@ -27,6 +27,7 @@ pub struct Editor {
     command_map: HashMap<String, Handler>,
     insert_map: HashMap<String, Handler>,
     sticky_key: Option<String>,
+    clipboard: Option<Clipboard>,
 }
 
 impl Editor {
@@ -48,6 +49,7 @@ impl Editor {
             command_map: handlers::new_command_map(),
             insert_map: handlers::new_insert_map(),
             sticky_key: None,
+            clipboard: None,
         }
     }
 
@@ -64,6 +66,9 @@ impl Editor {
                     status_msg = msg;
                 }
             }
+        }
+        if self.sticky_key.is_some() && status_msg.is_empty() {
+            status_msg = self.sticky_key.clone().unwrap();
         }
         win.move_cursor(self.cursor.pos());
         PanelUpdate {
@@ -85,6 +90,7 @@ impl Editor {
                 tree: &mut self.bullet_tree,
                 raster: &self.raster,
                 win,
+                clipboard: self.clipboard.as_ref(),  
             })?;
             if let Some(cursor) = output.cursor {
                 self.cursor = cursor;
@@ -93,6 +99,7 @@ impl Editor {
                 self.raster = raster;
             }
             self.sticky_key = output.sticky_key;
+            self.clipboard = output.clipboard;
             Ok(())
         } else {
             Err(format!("unknown command key: {}", key))
@@ -108,6 +115,7 @@ impl Editor {
                 tree: &mut self.bullet_tree,
                 raster: &self.raster,
                 win,
+                clipboard: self.clipboard.as_ref(),  
             })?;
             if let Some(cursor) = output.cursor {
                 self.cursor = cursor;
@@ -192,6 +200,7 @@ pub struct HandlerInput<'a> {
     pub tree: &'a mut tree::Tree,
     pub raster: &'a Raster,
     pub win: &'a mut dyn Window,
+    pub clipboard: Option<&'a Clipboard>, 
 }
 
 pub struct HandlerOutput {
