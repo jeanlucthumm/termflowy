@@ -231,8 +231,9 @@ pub fn command_p_shift_p(p: HandlerInput) -> Result<HandlerOutput, String> {
             return Err(String::from("nothing to paste"));
         }
     };
-    let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
-    let pos = pos.unwrap();
+    let (raster, insert_pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
+    let pos = (insert_pos.unwrap().0, cursor.pos.1);
+    let pos = find_left_text(raster.browser(pos).unwrap(), pos.1 as u32)?;
     Ok(HandlerOutput::new()
         .set_cursor(Cursor::new_command(pos))
         .set_raster(raster))
