@@ -99,7 +99,9 @@ impl Editor {
                 self.raster = raster;
             }
             self.sticky_key = output.sticky_key;
-            self.clipboard = output.clipboard;
+            if output.clipboard.is_some() {
+                self.clipboard = output.clipboard;
+            }
             Ok(())
         } else {
             Err(format!("unknown command key: {}", key))
