@@ -316,12 +316,16 @@ impl<'a> NodeIterator<'a> {
         self.current.id
     }
 
-    pub fn children_iter(&self) -> impl Iterator<Item=NodeIterator> {
+    pub fn children_iter<'b>(&'b self) -> impl 'b + Iterator<Item = NodeIterator<'a>> {
         self.current
             .children
             .iter()
             .map(move |i| self.nodes.get(i).unwrap())
             .map(move |n| Self::new(n, self.nodes, self.active_id))
+    }
+
+    pub fn traverse(self, traversal: TraversalType) -> impl Iterator<Item = NodeIterator<'a>> {
+        TreeTraversalIterator::new(self, traversal)
     }
 
     pub fn next_parent(&mut self) -> Option<i32> {
@@ -347,6 +351,48 @@ impl<'a> NodeIterator<'a> {
 
     pub fn is_active(&self) -> bool {
         self.current.id == self.active_id
+    }
+}
+
+struct TreeTraversalIterator<'a> {
+    stack: Vec<(NodeIterator<'a>, bool)>,
+    traversal: TraversalType,
+}
+
+pub enum TraversalType {
+    PostOrder,
+}
+
+impl<'a> TreeTraversalIterator<'a> {
+    fn new(itr: NodeIterator, traversal: TraversalType) -> TreeTraversalIterator {
+        TreeTraversalIterator {
+            stack: vec![(itr, false)],
+            traversal,
+        }
+    }
+
+    fn post_order(&mut self) -> Option<NodeIterator<'a>> {
+        let node = match self.stack.pop() {
+            None => return None,
+            Some((itr, true)) => return Some(itr),
+            Some((itr, false)) => itr,
+        };
+        let children: Vec<(NodeIterator, bool)> =
+            node.children_iter().map(|n| (n, false)).collect();
+        let mut children = children.into_iter().rev().collect();
+        self.stack.push((node, true));
+        self.stack.append(&mut children);
+        self.post_order()
+    }
+}
+
+impl<'a> Iterator for TreeTraversalIterator<'a> {
+    type Item = NodeIterator<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.traversal {
+            TraversalType::PostOrder => self.post_order(),
+        }
     }
 }
 
@@ -630,5 +676,45 @@ mod tests {
         assert_eq!(root.children, [7, 8, 9, 10]);
         assert_eq!(root.sibling, None);
         assert_eq!(root.parent, None);
+    }
+
+    fn new_deep_tree() -> Tree {
+        let mut tree = new_test_tree();
+        // 1.
+        // 2.
+        //      3.
+        //      4.
+        //          5.
+        //      6.
+        // 7.
+        // 8.
+        //      9.
+        //      10.
+        tree.create_sibling(); // id = 2
+        tree.create_sibling(); // id = 3
+        tree.indent().unwrap();
+        tree.create_sibling(); // id = 4
+        tree.create_sibling(); // id = 5
+        tree.indent().unwrap();
+        tree.create_sibling(); // id = 6
+        tree.unindent().unwrap();
+        tree.create_sibling(); // id = 7
+        tree.unindent().unwrap();
+        tree.create_sibling(); // id = 8
+        tree.create_sibling(); // id = 9
+        tree.indent().unwrap();
+        tree.create_sibling(); // id = 10
+        tree
+    }
+
+    #[test]
+    fn post_order_traversal() {
+        let tree = new_deep_tree();
+        let post_order_ids: Vec<i32> = tree
+            .root_iter()
+            .traverse(TraversalType::PostOrder)
+            .map(|n| n.id())
+            .collect();
+        assert_eq!(post_order_ids, [1, 3, 5, 4, 6, 2, 7, 9, 10, 8, 0]);
     }
 }
