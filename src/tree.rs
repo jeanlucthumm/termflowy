@@ -355,24 +355,25 @@ impl<'a> NodeIterator<'a> {
 }
 
 struct TreeTraversalIterator<'a> {
-    stack: Vec<(NodeIterator<'a>, bool)>,
+    deque: VecDeque<(NodeIterator<'a>, bool)>,
     traversal: TraversalType,
 }
 
 pub enum TraversalType {
     PostOrder,
+    Level,
 }
 
 impl<'a> TreeTraversalIterator<'a> {
     fn new(itr: NodeIterator, traversal: TraversalType) -> TreeTraversalIterator {
         TreeTraversalIterator {
-            stack: vec![(itr, false)],
+            deque: vec![(itr, false)].into_iter().collect(),
             traversal,
         }
     }
 
     fn post_order(&mut self) -> Option<NodeIterator<'a>> {
-        let node = match self.stack.pop() {
+        let node = match self.deque.pop_back() {
             None => return None,
             Some((itr, true)) => return Some(itr),
             Some((itr, false)) => itr,
@@ -380,9 +381,25 @@ impl<'a> TreeTraversalIterator<'a> {
         let children: Vec<(NodeIterator, bool)> =
             node.children_iter().map(|n| (n, false)).collect();
         let mut children = children.into_iter().rev().collect();
-        self.stack.push((node, true));
-        self.stack.append(&mut children);
+        self.deque.push_back((node, true));
+        self.deque.append(&mut children);
         self.post_order()
+    }
+
+    fn level(&mut self) -> Option<NodeIterator<'a>> {
+        let node = match self.deque.pop_front() {
+            None => return None,
+            Some((itr, true)) => return Some(itr),
+            Some((itr, false)) => itr,
+        };
+        let children: Vec<(NodeIterator, bool)> =
+            node.children_iter().map(|n| (n, false)).collect();
+        self.deque.push_back((node, true));
+        // TODO use VecDeque::prepend once it's implemented
+        for child in children {
+            self.deque.push_back(child);
+        }
+        self.level()
     }
 }
 
@@ -392,6 +409,7 @@ impl<'a> Iterator for TreeTraversalIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         match self.traversal {
             TraversalType::PostOrder => self.post_order(),
+            TraversalType::Level => self.level(),
         }
     }
 }
@@ -716,5 +734,16 @@ mod tests {
             .map(|n| n.id())
             .collect();
         assert_eq!(post_order_ids, [1, 3, 5, 4, 6, 2, 7, 9, 10, 8, 0]);
+    }
+
+    #[test]
+    fn level_traversal() {
+        let tree = new_deep_tree();
+        let in_order_ids: Vec<i32> = tree
+            .root_iter()
+            .traverse(TraversalType::Level)
+            .map(|n| n.id())
+            .collect();
+        assert_eq!(in_order_ids, [0, 1, 2, 7, 8, 3, 4, 6, 9, 10, 5]);
     }
 }
