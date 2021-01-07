@@ -196,6 +196,7 @@ impl Tree {
         Ok(())
     }
 
+    // TODO delete this shit
     fn delete_ids_recursive(&mut self, id: i32) {
         for i in self.nodes.get(&id).unwrap().children.clone() {
             self.delete_ids_recursive(i);
@@ -210,6 +211,10 @@ impl Tree {
             ids.append(&mut self.get_ids_recursive(i));
         }
         ids
+    }
+
+    fn get_id_gen(&self) -> &dyn IdGenerator {
+        self.generator.as_ref()
     }
 
     pub fn get_subtree(&self) -> Subtree {
@@ -270,6 +275,47 @@ impl Tree {
 pub struct Subtree {
     root: i32,
     nodes: NodeMap,
+}
+
+impl Subtree {
+    pub fn get_root_id(&self) -> i32 {
+        self.root
+    }
+
+    pub fn root_itr(&self) -> NodeIterator {
+        NodeIterator::new(self.nodes.get(&self.root).unwrap(), &self.nodes, self.root)
+    }
+
+    pub fn ids(&self) -> Vec<i32> {
+        self.root_itr()
+            .traverse(TraversalType::Level)
+            .map(|n| n.id())
+            .collect()
+    }
+
+    fn make_unique(mut self, id_gen: &dyn IdGenerator) -> Subtree {
+        let id_map: HashMap<i32, i32> = self
+            .nodes
+            .iter()
+            .map(|(id, _)| (*id, id_gen.gen()))
+            .collect();
+        let convert = |i| id_map.get(&i).copied().unwrap();
+        self.nodes = self
+            .nodes
+            .into_iter()
+            .map(|(id, mut n)| {
+                n.id = convert(id);
+                (n.id, n)
+            })
+            .collect();
+        self.root = convert(self.root);
+        for (_, n) in &mut self.nodes {
+            n.parent = n.parent.map(convert);
+            n.sibling = n.sibling.map(convert);
+            n.children = n.children.iter().copied().map(convert).collect();
+        }
+        self
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -745,5 +791,15 @@ mod tests {
             .map(|n| n.id())
             .collect();
         assert_eq!(in_order_ids, [0, 1, 2, 7, 8, 3, 4, 6, 9, 10, 5]);
+    }
+
+    #[test]
+    fn make_unique_subtree() {
+        let mut tree = new_deep_tree();
+        tree.activate(2).unwrap();
+        let subtree = tree.get_subtree();
+        let initial_ids = subtree.ids();
+        let final_ids: Vec<i32> = subtree.make_unique(tree.get_id_gen()).ids();
+        assert!(!final_ids.iter().any(|i| initial_ids.contains(i)));
     }
 }
