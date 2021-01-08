@@ -183,6 +183,7 @@ pub fn command_d(p: HandlerInput) -> Result<HandlerOutput, String> {
         Some("d") => {
             let pixel_state = p.raster.get(cursor.pos).unwrap();
             p.tree.activate(pixel_state.id())?;
+            let subtree = p.tree.get_subtree();
             p.tree.delete()?; // default active selection matches 'dd'
             let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
             let pos = find_left_text(
@@ -191,6 +192,7 @@ pub fn command_d(p: HandlerInput) -> Result<HandlerOutput, String> {
             )?;
             Ok(HandlerOutput::new()
                 .set_cursor(Cursor::new_command(pos))
+                .set_clipboard(Clipboard::Tree(subtree))
                 .set_raster(raster))
         }
         Some(_) => Ok(HandlerOutput::new().set_cursor(p.cursor)),
