@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 type NodeMap = HashMap<i32, Node>;
 
@@ -44,14 +44,17 @@ impl Tree {
         self.insert_node(node, true);
     }
 
-    // Should only insert subtrees that originated from this tree because of IdGen
-    pub fn insert_subtree(&mut self, mut subtree: Subtree, below: bool) {
+    pub fn insert_subtree(&mut self, subtree: Subtree, below: bool) {
+        let mut subtree = subtree.make_unique(self.generator.as_ref());
         let root = subtree.nodes.remove(&subtree.root).unwrap();
+        let root_id = root.id;
         self.insert_node(root, below);
         for (id, node) in subtree.nodes {
             // No need to use |insert_node| since subtree is isolated
             self.nodes.insert(id, node);
         }
+        self.activate(root_id)
+            .expect("could not activate subtree root after it was just inserted");
     }
 
     fn insert_node(&mut self, mut node: Node, below: bool) {
@@ -218,34 +221,18 @@ impl Tree {
     }
 
     pub fn get_subtree(&self) -> Subtree {
-        let mut nodes = NodeMap::new();
-        let ids = self.get_ids_recursive(self.active);
-        let mut mapped_ids = HashMap::new(); // subtree must contain unique ids
-        for i in &ids {
-            mapped_ids.insert(*i, self.generator.gen());
-        }
-        let mut root = None;
-        for i in &ids {
-            let mut node = self.nodes.get(&i).cloned().unwrap();
-            if node.id == self.active {
-                node.id = *mapped_ids.get(&node.id).unwrap();
-                node.parent = None;
-                node.sibling = None;
-                root = Some(node.id);
-            } else {
-                node.id = *mapped_ids.get(&node.id).unwrap();
-                node.parent = node.parent.map(|v| *mapped_ids.get(&v).unwrap());
-                node.sibling = node.sibling.map(|v| *mapped_ids.get(&v).unwrap());
-            }
-            node.children = node
-                .children
-                .iter()
-                .map(|v| *mapped_ids.get(&v).unwrap())
-                .collect();
-            nodes.insert(node.id, node.clone());
-        }
+        let mut nodes: HashMap<i32, Node> = self
+            .active_iter()
+            .traverse(TraversalType::PostOrder)
+            .map(|n| (n.current.id, n.current.clone()))
+            .collect();
+        let active_node = nodes
+            .get_mut(&self.active)
+            .expect("did not find active node when generating subtree");
+        active_node.parent = None;
+        active_node.sibling = None;
         Subtree {
-            root: root.expect("could not find root while parsing subtree"),
+            root: self.active,
             nodes,
         }
     }
