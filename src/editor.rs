@@ -32,7 +32,9 @@ pub struct Editor {
 
 impl Editor {
     pub fn new(win: &mut dyn Window) -> Editor {
-        let tree = tree::Tree::new(Box::new(IdGen { current: Cell::new(1) }));
+        let tree = tree::Tree::new(Box::new(IdGen {
+            current: Cell::new(1),
+        }));
         let (raster, cursor) = render::tree_render(win, tree.root_iter(), 0, 0);
         let cursor = match cursor {
             Some(pos) => Insert(InsertState { pos, offset: 0 }),
@@ -83,25 +85,8 @@ impl Editor {
 
     fn on_command_key_press(&mut self, key: &str, win: &mut dyn Window) -> Result<(), String> {
         if let Some(handler) = self.command_map.get(key) {
-            let output = (*handler)(HandlerInput {
-                key,
-                sticky_key: self.sticky_key.as_deref(),
-                cursor: self.cursor,
-                tree: &mut self.bullet_tree,
-                raster: &self.raster,
-                win,
-                clipboard: self.clipboard.as_ref(),  
-            })?;
-            if let Some(cursor) = output.cursor {
-                self.cursor = cursor;
-            }
-            if let Some(raster) = output.raster {
-                self.raster = raster;
-            }
-            self.sticky_key = output.sticky_key;
-            if output.clipboard.is_some() {
-                self.clipboard = output.clipboard;
-            }
+            let output = (*handler)(self.make_handler_input(key, win))?;
+            self.absorb_handler_output(output);
             Ok(())
         } else {
             Err(format!("unknown command key: {}", key))
@@ -110,22 +95,8 @@ impl Editor {
 
     fn on_insert_key_press(&mut self, key: &str, win: &mut dyn Window) -> Result<(), String> {
         if let Some(handler) = self.insert_map.get(key) {
-            let output = (*handler)(HandlerInput {
-                key,
-                sticky_key: self.sticky_key.as_deref(),
-                cursor: self.cursor,
-                tree: &mut self.bullet_tree,
-                raster: &self.raster,
-                win,
-                clipboard: self.clipboard.as_ref(),  
-            })?;
-            if let Some(cursor) = output.cursor {
-                self.cursor = cursor;
-            }
-            if let Some(raster) = output.raster {
-                self.raster = raster;
-            }
-            self.sticky_key = output.sticky_key;
+            let output = (*handler)(self.make_handler_input(key, win))?;
+            self.absorb_handler_output(output);
             Ok(())
         } else {
             let content = self.bullet_tree.get_mut_active_content();
@@ -141,6 +112,35 @@ impl Editor {
             win.move_cursor(pos);
             win.refresh();
             Ok(())
+        }
+    }
+
+    fn make_handler_input<'a>(
+        &'a mut self,
+        key: &'a str,
+        win: &'a mut dyn Window,
+    ) -> HandlerInput<'a> {
+        HandlerInput {
+            key,
+            sticky_key: self.sticky_key.as_deref(),
+            cursor: self.cursor,
+            tree: &mut self.bullet_tree,
+            raster: &self.raster,
+            win,
+            clipboard: self.clipboard.as_ref(),
+        }
+    }
+
+    fn absorb_handler_output(&mut self, output: HandlerOutput) {
+        if let Some(cursor) = output.cursor {
+            self.cursor = cursor;
+        }
+        if let Some(raster) = output.raster {
+            self.raster = raster;
+        }
+        self.sticky_key = output.sticky_key;
+        if output.clipboard.is_some() {
+            self.clipboard = output.clipboard;
         }
     }
 }
@@ -202,7 +202,7 @@ pub struct HandlerInput<'a> {
     pub tree: &'a mut tree::Tree,
     pub raster: &'a Raster,
     pub win: &'a mut dyn Window,
-    pub clipboard: Option<&'a Clipboard>, 
+    pub clipboard: Option<&'a Clipboard>,
 }
 
 pub struct HandlerOutput {
