@@ -121,6 +121,30 @@ impl Tree {
         Ok(())
     }
 
+    /// Increases indentation of current bullet, but is placed first in the children list of the
+    /// new parent
+    pub fn indent_as_first(&mut self) -> Result<(), String> {
+        self.indent()?;
+        let active = self.nodes.get(&self.active).unwrap();
+        let parent_id = active.parent.unwrap();
+
+        let parent = self.nodes.get_mut(&parent_id).unwrap();
+        if parent.children.len() == 1 {
+            // active is the only child so it's already first
+            return Ok(());
+        }
+        parent.children.pop().unwrap(); // this should be active id
+        parent.children.insert(0, self.active);
+        let second_id = parent.children.get(1).cloned().unwrap();
+
+        let second = self.nodes.get_mut(&second_id).unwrap();
+        second.sibling = Some(self.active);
+        let active = self.nodes.get_mut(&self.active).unwrap();
+        active.sibling = None;
+
+        Ok(())
+    }
+
     pub fn unindent(&mut self) -> Result<(), String> {
         let active = self.nodes.get(&self.active).unwrap();
         let id = active.id;
@@ -732,7 +756,7 @@ mod tests {
         assert_eq!(root.children, [2, 3, 4, 5]);
         assert_eq!(root.sibling, None);
         assert_eq!(root.parent, None);
-        
+
         assert_eq!(parent, 0);
         assert_eq!(sibling, None);
     }
@@ -796,5 +820,16 @@ mod tests {
         let initial_ids = subtree.ids();
         let final_ids: Vec<i32> = subtree.make_unique(tree.get_id_gen()).ids();
         assert!(!final_ids.iter().any(|i| initial_ids.contains(i)));
+    }
+
+    #[test]
+    fn indent_as_first_test() {
+        let mut tree = new_deep_tree();
+        tree.activate(7).unwrap();
+        tree.indent_as_first().unwrap();
+
+        let seven = tree.nodes.get(&7).unwrap();
+        assert_eq!(seven.parent, Some(2));
+        assert_eq!(seven.sibling, None);
     }
 }
