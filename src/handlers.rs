@@ -265,7 +265,7 @@ pub fn command_u(p: HandlerInput) -> Result<HandlerOutput, String> {
                 (parent, None) => {
                     p.tree.activate(parent)?;
                     p.tree.insert_subtree(tree, true);
-                    p.tree.indent()?;
+                    p.tree.indent_as_first()?;
                 }
             }
             let (raster, _) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
