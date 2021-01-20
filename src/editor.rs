@@ -39,14 +39,8 @@ impl Editor {
         let tree = tree::Tree::new(Box::new(IdGen {
             current: Cell::new(1),
         }));
-        let (raster, cursor) = render::tree_render(win, tree.root_iter(), 0, 0);
-        let cursor = match cursor {
-            Some(pos) => Insert(InsertState { pos, offset: 0 }),
-            None => Command(CommandState {
-                pos: (0, 0),
-                col: 0,
-            }),
-        };
+        let (raster, pos) = render::tree_render(win, tree.root_iter(), 0, 0);
+        let cursor = Cursor::new_insert(pos);
         win.move_cursor(cursor.pos());
         Editor {
             bullet_tree: tree,
@@ -108,7 +102,6 @@ impl Editor {
             let cursor = self.cursor.insert_state();
             content.insert_str(content.len() - cursor.offset, &key);
             let (raster, pos) = tree_render(win, self.bullet_tree.root_iter(), 0, cursor.offset);
-            let pos = pos.unwrap();
             self.raster = raster;
             self.cursor = Insert(InsertState {
                 pos,

@@ -187,10 +187,7 @@ pub fn command_d(p: HandlerInput) -> Result<HandlerOutput, String> {
             let (subtree, parent, sibling) = p.tree.get_subtree();
             p.tree.delete()?; // default active selection matches 'dd'
             let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
-            let pos = find_left_text(
-                raster.browser((pos.unwrap().0, cursor.col))?,
-                cursor.col as u32,
-            )?;
+            let pos = find_left_text(raster.browser((pos.0, cursor.col))?, cursor.col as u32)?;
             Ok(HandlerOutput::new()
                 .set_cursor(Cursor::new_command(pos))
                 .set_clipboard(Clipboard::Tree(subtree.clone()))
@@ -242,7 +239,7 @@ pub fn command_p_shift_p(p: HandlerInput) -> Result<HandlerOutput, String> {
         }
     };
     let (raster, insert_pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
-    let pos = (insert_pos.unwrap().0, cursor.pos.1);
+    let pos = (insert_pos.0, cursor.pos.1);
     let pos = find_left_text(raster.browser(pos).unwrap(), pos.1 as u32)?;
     Ok(HandlerOutput::new()
         .set_cursor(Cursor::new_command(pos))
@@ -436,13 +433,9 @@ fn render_and_make_insert_output(
     offset: usize,
 ) -> Result<HandlerOutput, String> {
     let (raster, pos) = render::tree_render(win, tree.root_iter(), 0, 0);
-    if let Some(pos) = pos {
-        Ok(HandlerOutput::new()
-            .set_cursor(Insert(InsertState { offset, pos }))
-            .set_raster(raster))
-    } else {
-        Err(String::from("tree could not find active bullet position"))
-    }
+    Ok(HandlerOutput::new()
+        .set_cursor(Insert(InsertState { offset, pos }))
+        .set_raster(raster))
 }
 
 #[cfg(test)]

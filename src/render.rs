@@ -141,7 +141,7 @@ pub fn tree_render(
     node: tree::NodeIterator,
     indentation_lvl: usize,
     insert_offset: usize,
-) -> (Raster, Option<(i32, i32)>) {
+) -> (Raster, (i32, i32)) {
     win.move_cursor((0, 0));
     let mut cursor_pos: Option<(i32, i32)> = None;
     let mut raster = Raster::new(win.get_max_yx());
@@ -150,7 +150,7 @@ pub fn tree_render(
         cursor_pos = cursor_pos.or(subtree_pos);
     }
     raster.push_multiple(PixelState::Empty, clear_remaining(win) as u32);
-    (raster, cursor_pos)
+    (raster, cursor_pos.expect("could not find active node during tree_render"))
 }
 
 pub fn subtree_render(
