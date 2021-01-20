@@ -3,9 +3,9 @@
 ///   ecept the handler for <C-c>
 use std::collections::HashMap;
 
-use crate::editor::Cursor::*;
 use crate::editor::{self, Clipboard, Cursor};
 use crate::editor::{CommandState, HandlerInput, HandlerOutput, InsertState};
+use crate::editor::{Cursor::*, HistoryItem};
 use crate::raster::PixelState::*;
 use crate::raster::{Browser, Direction};
 use crate::render;
@@ -31,6 +31,7 @@ pub fn new_command_map() -> HashMap<String, editor::Handler> {
     map.insert(String::from("y"), command_y);
     map.insert(String::from("p"), command_p_shift_p);
     map.insert(String::from("P"), command_p_shift_p);
+    map.insert(String::from("u"), command_u);
     map
 }
 
@@ -183,7 +184,7 @@ pub fn command_d(p: HandlerInput) -> Result<HandlerOutput, String> {
         Some("d") => {
             let pixel_state = p.raster.get(cursor.pos).unwrap();
             p.tree.activate(pixel_state.id())?;
-            let subtree = p.tree.get_subtree();
+            let (subtree, parent, sibling) = p.tree.get_subtree();
             p.tree.delete()?; // default active selection matches 'dd'
             let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
             let pos = find_left_text(
@@ -192,7 +193,13 @@ pub fn command_d(p: HandlerInput) -> Result<HandlerOutput, String> {
             )?;
             Ok(HandlerOutput::new()
                 .set_cursor(Cursor::new_command(pos))
-                .set_clipboard(Clipboard::Tree(subtree))
+                .set_clipboard(Clipboard::Tree(subtree.clone()))
+                .set_history_item(HistoryItem::Tree {
+                    parent,
+                    sibling,
+                    tree: subtree,
+                    cursor: p.cursor,
+                })
                 .set_raster(raster))
         }
         Some(_) => Ok(HandlerOutput::new().set_cursor(p.cursor)),
@@ -208,7 +215,8 @@ pub fn command_y(p: HandlerInput) -> Result<HandlerOutput, String> {
         Some("y") => {
             let pixel_state = p.raster.get(cursor.pos).unwrap();
             p.tree.activate(pixel_state.id())?;
-            Ok(HandlerOutput::new().set_clipboard(Clipboard::Tree(p.tree.get_subtree())))
+            let (subtree, _, _) = p.tree.get_subtree();
+            Ok(HandlerOutput::new().set_clipboard(Clipboard::Tree(subtree)))
         }
         Some(_) => Ok(HandlerOutput::new().set_cursor(p.cursor)),
         None => Ok(HandlerOutput::new()
@@ -239,6 +247,35 @@ pub fn command_p_shift_p(p: HandlerInput) -> Result<HandlerOutput, String> {
     Ok(HandlerOutput::new()
         .set_cursor(Cursor::new_command(pos))
         .set_raster(raster))
+}
+
+pub fn command_u(p: HandlerInput) -> Result<HandlerOutput, String> {
+    match p.history.pop_back() {
+        Some(HistoryItem::Tree {
+            parent,
+            sibling,
+            tree,
+            cursor: history_cursor,
+        }) => {
+            match (parent, sibling) {
+                (_, Some(sibling)) => {
+                    p.tree.activate(sibling)?;
+                    p.tree.insert_subtree(tree, true);
+                }
+                (parent, None) => {
+                    p.tree.activate(parent)?;
+                    p.tree.insert_subtree(tree, true);
+                    p.tree.indent()?;
+                }
+            }
+            let (raster, _) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
+            Ok(HandlerOutput::new()
+                .set_raster(raster)
+                .set_cursor(history_cursor))
+        }
+        Some(HistoryItem::Text { .. }) => todo!(),
+        None => return Ok(HandlerOutput::new()),
+    }
 }
 
 fn find_left_text(b: Browser, col: u32) -> Result<Point, String> {

@@ -220,7 +220,7 @@ impl Tree {
         self.generator.as_ref()
     }
 
-    pub fn get_subtree(&self) -> Subtree {
+    pub fn get_subtree(&self) -> (Subtree, i32, Option<i32>) {
         let mut nodes: HashMap<i32, Node> = self
             .active_iter()
             .traverse(TraversalType::PostOrder)
@@ -229,12 +229,18 @@ impl Tree {
         let active_node = nodes
             .get_mut(&self.active)
             .expect("did not find active node when generating subtree");
+        let parent = active_node.parent.unwrap();
+        let sibling = active_node.sibling;
         active_node.parent = None;
         active_node.sibling = None;
-        Subtree {
-            root: self.active,
-            nodes,
-        }
+        (
+            Subtree {
+                root: self.active,
+                nodes,
+            },
+            parent,
+            sibling,
+        )
     }
 
     pub fn get_mut_active_content(&mut self) -> &mut String {
@@ -719,14 +725,16 @@ mod tests {
         tree.create_sibling(); // id = 5 under 1
 
         tree.activate(1).unwrap();
-        let subtree = tree.get_subtree();
+        let (subtree, parent, sibling) = tree.get_subtree();
 
-        // Note that new ids should have been generated
-        assert_eq!(subtree.root, 6);
+        assert_eq!(subtree.root, 1);
         let root = subtree.nodes.get(&subtree.root).unwrap();
-        assert_eq!(root.children, [7, 8, 9, 10]);
+        assert_eq!(root.children, [2, 3, 4, 5]);
         assert_eq!(root.sibling, None);
         assert_eq!(root.parent, None);
+        
+        assert_eq!(parent, 0);
+        assert_eq!(sibling, None);
     }
 
     fn new_deep_tree() -> Tree {
@@ -784,7 +792,7 @@ mod tests {
     fn make_unique_subtree() {
         let mut tree = new_deep_tree();
         tree.activate(2).unwrap();
-        let subtree = tree.get_subtree();
+        let (subtree, _, _) = tree.get_subtree();
         let initial_ids = subtree.ids();
         let final_ids: Vec<i32> = subtree.make_unique(tree.get_id_gen()).ids();
         assert!(!final_ids.iter().any(|i| initial_ids.contains(i)));

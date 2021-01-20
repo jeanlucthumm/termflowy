@@ -1,4 +1,7 @@
-use std::{cell::Cell, collections::HashMap};
+use std::{
+    cell::Cell,
+    collections::{HashMap, VecDeque},
+};
 
 use render::Point;
 use Cursor::*;
@@ -28,6 +31,7 @@ pub struct Editor {
     insert_map: HashMap<String, Handler>,
     sticky_key: Option<String>,
     clipboard: Option<Clipboard>,
+    history: VecDeque<HistoryItem>,
 }
 
 impl Editor {
@@ -52,6 +56,7 @@ impl Editor {
             insert_map: handlers::new_insert_map(),
             sticky_key: None,
             clipboard: None,
+            history: VecDeque::new(),
         }
     }
 
@@ -128,6 +133,7 @@ impl Editor {
             raster: &self.raster,
             win,
             clipboard: self.clipboard.as_ref(),
+            history: &mut self.history,
         }
     }
 
@@ -137,6 +143,10 @@ impl Editor {
         }
         if let Some(raster) = output.raster {
             self.raster = raster;
+        }
+        if let Some(item) = output.history_item {
+            // TODO limit how much history is stored
+            self.history.push_back(item);
         }
         self.sticky_key = output.sticky_key;
         if output.clipboard.is_some() {
@@ -203,6 +213,7 @@ pub struct HandlerInput<'a> {
     pub raster: &'a Raster,
     pub win: &'a mut dyn Window,
     pub clipboard: Option<&'a Clipboard>,
+    pub history: &'a mut VecDeque<HistoryItem>,
 }
 
 pub struct HandlerOutput {
@@ -210,6 +221,7 @@ pub struct HandlerOutput {
     pub raster: Option<Raster>,
     pub sticky_key: Option<String>,
     pub clipboard: Option<Clipboard>,
+    pub history_item: Option<HistoryItem>,
 }
 
 impl HandlerOutput {
@@ -219,6 +231,7 @@ impl HandlerOutput {
             raster: None,
             sticky_key: None,
             clipboard: None,
+            history_item: None,
         }
     }
 
@@ -241,8 +254,28 @@ impl HandlerOutput {
         self.clipboard = Some(clipboard);
         self
     }
+
+    pub fn set_history_item(mut self, item: HistoryItem) -> HandlerOutput {
+        self.history_item = Some(item);
+        self
+    }
 }
 
 pub enum Clipboard {
     Tree(tree::Subtree),
+}
+
+pub enum HistoryItem {
+    Tree {
+        parent: i32,
+        sibling: Option<i32>,
+        tree: tree::Subtree,
+        /// Cursor state when this history item was created
+        cursor: Cursor,
+    },
+    Text {
+        id: i32,
+        index: usize,
+        length: usize,
+    },
 }
