@@ -139,14 +139,14 @@ pub fn addstr_right_aligned(win: &mut dyn Window, txt: &str) {
 pub fn tree_render(
     win: &mut dyn Window,
     node: tree::NodeIterator,
-    indentation_lvl: usize,
+    active_id: i32,
     insert_offset: usize,
 ) -> (Raster, (i32, i32)) {
     win.move_cursor((0, 0));
     let mut cursor_pos: Option<(i32, i32)> = None;
     let mut raster = Raster::new(win.get_max_yx());
     for child in node.children_iter() {
-        let subtree_pos = subtree_render(win, child, indentation_lvl, insert_offset, &mut raster);
+        let subtree_pos = subtree_render(win, child, 0, insert_offset, active_id, &mut raster);
         cursor_pos = cursor_pos.or(subtree_pos);
     }
     raster.push_multiple(PixelState::Empty, clear_remaining(win) as u32);
@@ -158,24 +158,25 @@ pub fn subtree_render(
     node: tree::NodeIterator,
     indentation_lvl: usize,
     insert_offset: usize,
+    active_id: i32,
     raster: &mut Raster,
 ) -> Option<(i32, i32)> {
+    let is_active = node.id() == active_id;
     let mut cursor_pos = render_bullet(
         win,
-        node.content(),
+        &node.content(),
         indentation_lvl,
         node.id(),
-        if node.is_active() {
-            Some(insert_offset)
-        } else {
-            None
+        match is_active {
+            true => Some(insert_offset),
+            false => None,
         },
         raster,
     );
     raster.push_multiple(PixelState::Empty, clear_remaining_line(win) as u32);
 
     for child in node.children_iter() {
-        let subtree_pos = subtree_render(win, child, indentation_lvl + 1, insert_offset, raster);
+        let subtree_pos = subtree_render(win, child, indentation_lvl + 1, insert_offset, active_id, raster);
         cursor_pos = cursor_pos.or(subtree_pos);
     }
     cursor_pos

@@ -11,6 +11,7 @@ use crate::raster::{Browser, Direction};
 use crate::render;
 use crate::render::{Point, Window};
 use crate::tree::Tree;
+use crate::tree::Dir::*;
 
 const SEPARATORS: [char; 1] = [' '];
 
@@ -113,11 +114,11 @@ pub fn command_bwe(p: HandlerInput) -> Result<HandlerOutput, String> {
     } else {
         return Err(String::from("invalid pixel state"));
     }
-    let content = p.tree.get_active_content();
+    let content_len = p.tree.get_active_content().len();
     let (dir, final_offset, skip_index) = match p.key {
         "b" => (Direction::Left, 1, 0),
-        "w" => (Direction::Right, 1, content.len() - 1),
-        "e" => (Direction::Right, -1, content.len() - 1),
+        "w" => (Direction::Right, 1, content_len - 1),
+        "e" => (Direction::Right, -1, content_len - 1),
         _ => panic!("check key handler mappings"),
     };
     // Go to another bullet if we are on extremities
@@ -133,7 +134,7 @@ pub fn command_bwe(p: HandlerInput) -> Result<HandlerOutput, String> {
     if let Text { id, offset } = browser.state() {
         p.tree.activate(id)?;
         let pos = jump_to_next_separator(
-            p.tree.get_active_content(),
+            &p.tree.get_active_content(),
             offset,
             dir,
             final_offset,
@@ -225,14 +226,14 @@ pub fn command_y(p: HandlerInput) -> Result<HandlerOutput, String> {
 pub fn command_p_shift_p(p: HandlerInput) -> Result<HandlerOutput, String> {
     let cursor = p.cursor.command_state();
     p.tree.activate(p.raster.get(cursor.pos).unwrap().id())?;
-    let below = match p.key {
-        "p" => true,
-        "P" => false,
+    let dir = match p.key {
+        "p" => Below,
+        "P" => Above,
         _ => panic!("wrong key passed to handler, check table"),
     };
     match p.clipboard {
         Some(Clipboard::Tree(subtree)) => {
-            p.tree.insert_subtree(subtree.clone(), below);
+            p.tree.insert_subtree(subtree.clone(), dir);
         }
         None => {
             return Err(String::from("nothing to paste"));
@@ -257,12 +258,12 @@ pub fn command_u(p: HandlerInput) -> Result<HandlerOutput, String> {
             match (parent, sibling) {
                 (_, Some(sibling)) => {
                     p.tree.activate(sibling)?;
-                    p.tree.insert_subtree(tree, true);
+                    p.tree.insert_subtree(tree, Below);
                 }
                 (parent, None) => {
                     p.tree.activate(parent)?;
-                    p.tree.insert_subtree(tree, true);
-                    p.tree.indent_as_first()?;
+                    p.tree.insert_subtree(tree, Below);
+                    p.tree.indent(true)?;
                 }
             }
             let (raster, _) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
@@ -357,7 +358,7 @@ fn jump_to_next_separator<'a>(
 }
 
 pub fn insert_tab(p: HandlerInput) -> Result<HandlerOutput, String> {
-    p.tree.indent()?;
+    p.tree.indent(false)?;
     render_and_make_insert_output(p.tree, p.win, 0)
 }
 
@@ -373,18 +374,17 @@ pub fn insert_enter(p: HandlerInput) -> Result<HandlerOutput, String> {
 
 pub fn insert_backspace(p: HandlerInput) -> Result<HandlerOutput, String> {
     let cursor = p.cursor.insert_state();
-    let content = p.tree.get_mut_active_content();
-    if let Some(remove_index) = content
-        .len()
+    let content_len = p.tree.get_active_content().len();
+    if let Some(remove_index) = content_len
         .checked_sub(cursor.offset)
         .expect("offset should not be larger than length of content")
         .checked_sub(1)
     {
-        content.remove(remove_index);
+        p.tree.get_mut_active_content().remove(remove_index);
         render_and_make_insert_output(p.tree, p.win, 0)
     } else {
         let mut itr = p.tree.active_iter();
-        let new_active = match itr.next_sibling() {
+        let new_active = match itr.next_sibling(false) {
             Some(id) => id,
             None => match itr.next_parent() {
                 Some(id) => id,
@@ -392,7 +392,7 @@ pub fn insert_backspace(p: HandlerInput) -> Result<HandlerOutput, String> {
             },
         };
         p.tree.delete()?;
-        p.tree.activate(new_active)?;
+        p.tree.activate(new_active.id())?;
         render_and_make_insert_output(p.tree, p.win, 0)
     }
 }

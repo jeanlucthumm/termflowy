@@ -1,9 +1,21 @@
-use std::collections::{HashMap, VecDeque};
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    collections::{HashMap, VecDeque},
+    ops::{Deref, DerefMut},
+    rc::Rc,
+};
 
-type NodeMap = HashMap<i32, Node>;
+use Dir::*;
+
+type Link = Rc<RefCell<Node>>;
 
 pub trait IdGenerator {
     fn gen(&self) -> i32;
+}
+
+pub enum Dir {
+    Above,
+    Below,
 }
 
 /// Invariants:
@@ -13,231 +25,91 @@ pub trait IdGenerator {
 /// - No two nodes have the same id
 /// - All nodes but root nodes have a parent
 pub struct Tree {
-    active: i32,
-    nodes: NodeMap,
+    active: Link,
+    root: Link,
     generator: Box<dyn IdGenerator>,
+    id_table: HashMap<i32, Link>,
 }
 
 impl Tree {
     pub fn new(generator: Box<dyn IdGenerator>) -> Tree {
-        let mut nodes = NodeMap::new();
-        let id = generator.gen();
-        let mut root = Node::new(0, None);
-        root.children.push(id);
-        nodes.insert(0, root);
-        let first = Node::new(id, Some(0));
-        nodes.insert(id, first);
+        let mut id_table = HashMap::new();
+
+        let root = Node::new_link(0, None);
+        id_table.insert(root.borrow().id, root.clone());
+
+        let first = Node::new_link(generator.gen(), Some(root.clone()));
+        id_table.insert(first.borrow().id, first.clone());
+        root.borrow_mut().children.push(first.clone());
+
         Tree {
-            active: id,
-            nodes,
+            active: first,
+            root,
             generator,
+            id_table,
         }
     }
 
     pub fn create_sibling_above(&mut self) {
-        let node = Node::new(self.generator.gen(), None);
-        self.insert_node(node, false);
+        let node = Node::new_link(self.generator.gen(), None);
+        self.insert_node(node, Above);
     }
 
     pub fn create_sibling(&mut self) {
-        let node = Node::new(self.generator.gen(), None);
-        self.insert_node(node, true);
+        let node = Node::new_link(self.generator.gen(), None);
+        self.insert_node(node.clone(), Below);
+        self.active = node;
     }
 
-    pub fn insert_subtree(&mut self, subtree: Subtree, below: bool) {
-        let mut subtree = subtree.make_unique(self.generator.as_ref());
-        let root = subtree.nodes.remove(&subtree.root).unwrap();
-        let root_id = root.id;
-        self.insert_node(root, below);
-        for (id, node) in subtree.nodes {
-            // No need to use |insert_node| since subtree is isolated
-            self.nodes.insert(id, node);
-        }
+    pub fn insert_subtree(&mut self, subtree: Subtree, dir: Dir) {
+        let subtree = subtree.make_unique(self.generator.as_ref());
+        let root_id = subtree.root.borrow().id;
+        self.insert_node(subtree.root, dir);
         self.activate(root_id)
-            .expect("could not activate subtree root after it was just inserted");
+            .expect("could not find subtree root right after insertion");
     }
 
-    fn insert_node(&mut self, mut node: Node, below: bool) {
-        let active = self.nodes.get(&self.active).unwrap();
-        let active_id = active.id;
-        node.parent = Some(active.parent.unwrap());
-        node.sibling = match below {
-            true => Some(active.id),
-            false => active.sibling,
-        };
-        if !below {
-            let active = self.nodes.get_mut(&self.active).unwrap();
-            active.sibling = Some(node.id);
-        }
-
-        let parent = self.nodes.get_mut(&node.parent.unwrap()).unwrap();
-        let down_sibling_id; // sibling beneath active
-        if let Some(index) = parent.children.iter().position(|id| *id == active_id) {
-            down_sibling_id = match below {
-                true => parent.children.get(index + 1).cloned(),
-                false => None, // sibling ids only point up
-            };
-            let insert_index = match below {
-                true => index + 1,
-                false => index,
-            };
-            parent.children.insert(insert_index, node.id);
-        } else {
-            panic!("child not found in its own parent")
-        }
-
-        if let Some(down_sibling_id) = down_sibling_id {
-            let down_sibling = self.nodes.get_mut(&down_sibling_id).unwrap();
-            down_sibling.sibling = Some(node.id)
-        }
-
-        self.active = node.id;
-        self.nodes.insert(node.id, node);
+    fn insert_node(&mut self, node: Link, dir: Dir) {
+        let parent = self.active.borrow().parent.clone().unwrap();
+        node.borrow_mut().parent = Some(parent.clone());
+        parent
+            .borrow_mut()
+            .insert_child_relative(self.active.borrow().id, dir, node)
+            .expect("child not found in its own parent");
     }
 
-    pub fn indent(&mut self) -> Result<(), String> {
-        let active = self.nodes.get(&self.active).unwrap();
-        let id = active.id;
-        let parent_id = active.parent.unwrap();
-        let sibling_id = if let Some(x) = active.sibling {
-            x
-        } else {
-            return Err(String::from("could not indent: node has no siblings"));
+    /// Indents the active node under its up sibling. Returns errors if there is no such sibling.
+    /// If `first` then the active node will be placed as the first child of the sibling, otherwise
+    /// last.
+    pub fn indent(&mut self, first: bool) -> Result<(), String> {
+        let sibling = match self.active.borrow().get_sibling(false) {
+            Some(x) => x,
+            None => return Err(String::from("already at max indentation level")),
         };
+        // Remove from previous parent
+        let parent = self.active.borrow().parent.clone().unwrap();
+        parent.borrow_mut().remove_child(self.active.borrow().id);
 
-        let parent = self.nodes.get_mut(&parent_id).unwrap();
-        parent.children.retain(|i| *i != id);
-
-        let sibling = self.nodes.get_mut(&sibling_id).unwrap();
-        let new_sibling = match sibling.children.last() {
-            Some(id) => Some(*id),
-            None => None,
-        };
-        sibling.children.push(id);
-
-        let active = self.nodes.get_mut(&id).unwrap();
-        active.parent = Some(sibling_id);
-        active.sibling = new_sibling;
-        Ok(())
-    }
-
-    /// Increases indentation of current bullet, but is placed first in the children list of the
-    /// new parent
-    pub fn indent_as_first(&mut self) -> Result<(), String> {
-        self.indent()?;
-        let active = self.nodes.get(&self.active).unwrap();
-        let parent_id = active.parent.unwrap();
-
-        let parent = self.nodes.get_mut(&parent_id).unwrap();
-        if parent.children.len() == 1 {
-            // active is the only child so it's already first
-            return Ok(());
+        // Establish parent-child relationship with former sibling
+        match first {
+            true => sibling.borrow_mut().insert_child_first(self.active.clone()),
+            false => sibling.borrow_mut().insert_child_last(self.active.clone()),
         }
-        parent.children.pop().unwrap(); // this should be active id
-        parent.children.insert(0, self.active);
-        let second_id = parent.children.get(1).cloned().unwrap();
-
-        let second = self.nodes.get_mut(&second_id).unwrap();
-        second.sibling = Some(self.active);
-        let active = self.nodes.get_mut(&self.active).unwrap();
-        active.sibling = None;
-
+        self.active.borrow_mut().parent = Some(sibling);
         Ok(())
     }
 
     pub fn unindent(&mut self) -> Result<(), String> {
-        let active = self.nodes.get(&self.active).unwrap();
-        let id = active.id;
-        let parent_id = active.parent.unwrap();
-        if parent_id == 0 {
-            return Err(String::from("could not unindent: already at top level"));
-        }
-        let grandparent_id = self.nodes.get(&parent_id).unwrap().parent.unwrap();
-
-        let parent = self.nodes.get_mut(&parent_id).unwrap();
-        parent.children.retain(|i| *i != id);
-        let grandparent = self.nodes.get_mut(&grandparent_id).unwrap();
-        if let Some(index) = grandparent.children.iter().position(|i| *i == parent_id) {
-            grandparent.children.insert(index + 1, id);
-        } else {
-            panic!("bad tree invariant: parent not found in children of its own parent");
-        }
-
-        let active = self.nodes.get_mut(&id).unwrap();
-        active.parent = Some(grandparent_id);
-        active.sibling = Some(parent_id);
-
-        Ok(())
+        todo!()
     }
 
     pub fn activate(&mut self, id: i32) -> Result<(), String> {
-        if !self.nodes.contains_key(&id) {
-            Err(format!(
-                "could not activate node with id {}: does not exist",
-                id
-            ))
-        } else if id == 0 {
-            Err(String::from("cannot active root node"))
-        } else {
-            self.active = id;
-            Ok(())
-        }
-    }
-
-    pub fn delete(&mut self) -> Result<(), String> {
-        let active = self.nodes.get(&self.active).unwrap();
-        let parent = self.nodes.get(&active.parent.unwrap()).unwrap();
-        if parent.id == 0 && active.sibling.is_none() {
-            return Err(String::from("cannot delete the last bullet"));
-        }
-        let index_in_parent = parent
-            .children
-            .iter()
-            .position(|id| *id == active.id)
-            .unwrap();
-        let down_sibling_id = parent.children.get(index_in_parent + 1).copied();
-        let active_sibling_id = active.sibling;
-        let active_id = active.id;
-
-        let parent_id = parent.id;
-        self.nodes
-            .get_mut(&parent_id)
-            .unwrap()
-            .children
-            .remove(index_in_parent);
-
-        if let Some(sibling_id) = down_sibling_id {
-            self.nodes.get_mut(&sibling_id).unwrap().sibling = active_sibling_id;
-            self.active = sibling_id;
-        } else if let Some(active_sibling_id) = active_sibling_id {
-            self.active = active_sibling_id;
-        } else {
-            if parent_id == 0 {
-                panic!("delete should not lead to root being active");
-            }
-            self.active = parent_id;
-        }
-
-        self.delete_ids_recursive(active_id);
-
+        self.active = self.get_node(id).cloned().ok_or("could not find id to activate".to_string())?;
         Ok(())
     }
 
-    // TODO delete this shit
-    fn delete_ids_recursive(&mut self, id: i32) {
-        for i in self.nodes.get(&id).unwrap().children.clone() {
-            self.delete_ids_recursive(i);
-        }
-        self.nodes.remove(&id);
-    }
-
-    fn get_ids_recursive(&self, id: i32) -> Vec<i32> {
-        let mut ids: Vec<i32> = Vec::new();
-        ids.push(id);
-        for i in self.nodes.get(&id).unwrap().children.clone() {
-            ids.append(&mut self.get_ids_recursive(i));
-        }
-        ids
+    pub fn delete(&mut self) -> Result<(), String> {
+        todo!()
     }
 
     fn get_id_gen(&self) -> &dyn IdGenerator {
@@ -245,62 +117,42 @@ impl Tree {
     }
 
     pub fn get_subtree(&self) -> (Subtree, i32, Option<i32>) {
-        let mut nodes: HashMap<i32, Node> = self
-            .active_iter()
-            .traverse(TraversalType::PostOrder)
-            .map(|n| (n.current.id, n.current.clone()))
-            .collect();
-        let active_node = nodes
-            .get_mut(&self.active)
-            .expect("did not find active node when generating subtree");
-        let parent = active_node.parent.unwrap();
-        let sibling = active_node.sibling;
-        active_node.parent = None;
-        active_node.sibling = None;
-        (
-            Subtree {
-                root: self.active,
-                nodes,
-            },
-            parent,
-            sibling,
-        )
+        todo!()
     }
 
-    pub fn get_mut_active_content(&mut self) -> &mut String {
-        &mut self.nodes.get_mut(&self.active).unwrap().content
+    pub fn get_mut_active_content(&mut self) -> impl DerefMut<Target = String> + '_ {
+        RefMut::map(self.active.borrow_mut(), |n| &mut n.content)
     }
 
-    pub fn get_active_content(&self) -> &String {
-        &self.nodes.get(&self.active).unwrap().content
+    pub fn get_active_content(&self) -> impl Deref<Target = String> + '_ {
+        Ref::map(self.active.borrow(), |n| &n.content)
+    }
+
+    pub fn get_active_id(&self) -> i32 {
+        self.active.borrow().id
+    }
+
+    fn get_node(&self, id: i32) -> Option<&Link> {
+        self.id_table.get(&id)
     }
 
     pub fn root_iter(&self) -> NodeIterator {
-        NodeIterator::new(self.nodes.get(&0).unwrap(), &self.nodes, self.active)
+        NodeIterator::new(self.root.clone())
     }
 
     pub fn active_iter(&self) -> NodeIterator {
-        NodeIterator::new(
-            self.nodes.get(&self.active).unwrap(),
-            &self.nodes,
-            self.active,
-        )
+        NodeIterator::new(self.active.clone())
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Subtree {
-    root: i32,
-    nodes: NodeMap,
+    root: Link,
 }
 
 impl Subtree {
-    pub fn get_root_id(&self) -> i32 {
-        self.root
-    }
-
     pub fn root_itr(&self) -> NodeIterator {
-        NodeIterator::new(self.nodes.get(&self.root).unwrap(), &self.nodes, self.root)
+        NodeIterator::new(self.root.clone())
     }
 
     pub fn ids(&self) -> Vec<i32> {
@@ -310,26 +162,9 @@ impl Subtree {
             .collect()
     }
 
-    fn make_unique(mut self, id_gen: &dyn IdGenerator) -> Subtree {
-        let id_map: HashMap<i32, i32> = self
-            .nodes
-            .iter()
-            .map(|(id, _)| (*id, id_gen.gen()))
-            .collect();
-        let convert = |i| id_map.get(&i).copied().unwrap();
-        self.nodes = self
-            .nodes
-            .into_iter()
-            .map(|(id, mut n)| {
-                n.id = convert(id);
-                (n.id, n)
-            })
-            .collect();
-        self.root = convert(self.root);
-        for (_, n) in &mut self.nodes {
-            n.parent = n.parent.map(convert);
-            n.sibling = n.sibling.map(convert);
-            n.children = n.children.iter().copied().map(convert).collect();
+    fn make_unique(self, id_gen: &dyn IdGenerator) -> Subtree {
+        for node_itr in self.root_itr().traverse(TraversalType::PostOrder) {
+            node_itr.node.borrow_mut().id = id_gen.gen();
         }
         self
     }
@@ -338,87 +173,136 @@ impl Subtree {
 #[derive(Debug, Clone)]
 struct Node {
     id: i32,
-    parent: Option<i32>,
-    sibling: Option<i32>,
-    children: Vec<i32>,
+    parent: Option<Link>,
+    children: Vec<Link>,
     content: String,
 }
 
 impl Node {
-    fn new(id: i32, parent: Option<i32>) -> Node {
+    fn new(id: i32, parent: Option<Link>) -> Node {
         Node {
             id,
             parent,
-            sibling: None,
             children: vec![],
             content: String::new(),
         }
     }
-}
 
-pub struct NodeIterator<'a> {
-    nodes: &'a NodeMap,
-    current: &'a Node,
-    active_id: i32,
-}
-
-impl<'a> NodeIterator<'a> {
-    fn new(node: &'a Node, nodes: &'a NodeMap, active_id: i32) -> NodeIterator<'a> {
-        NodeIterator {
-            nodes,
-            current: node,
-            active_id,
-        }
+    fn new_link(id: i32, parent: Option<Link>) -> Link {
+        Link::new(RefCell::new(Self::new(id, parent)))
     }
 
-    pub fn content(&self) -> &String {
-        &self.current.content
+    /// Inserts a `child` above or below an existing child with an id of `relative_id` (if it exists).
+    fn insert_child_relative(
+        &mut self,
+        relative_id: i32,
+        dir: Dir,
+        child: Link,
+    ) -> Result<(), ()> {
+        let index = match (
+            self.children
+                .iter()
+                .position(|l| l.borrow().id == relative_id),
+            dir,
+        ) {
+            (Some(index), Below) => index + 1,
+            (Some(index), Above) => index,
+            (None, _) => return Err(()),
+        };
+        self.children.insert(index, child);
+        Ok(())
+    }
+
+    fn insert_child_last(&mut self, child: Link) {
+        self.children.push(child);
+    }
+
+    fn insert_child_first(&mut self, child: Link) {
+        self.children.insert(0, child);
+    }
+
+    /// Removes the child with the given id. Will borrow every child Link.
+    fn remove_child(&mut self, child_id: i32) {
+        self.children.retain(|l| l.borrow().id != child_id);
+    }
+
+    /// Gets the sibling above or below the current node. This will borrow the parent to access
+    /// its children and will borrow a Link to itself. Siblings are nodes on the same layer as
+    /// the current node.
+    fn get_sibling(&self, below: bool) -> Option<Link> {
+        let parent = match self.parent {
+            Some(ref parent) => parent.borrow(),
+            None => return None,
+        };
+        if let Some(index) = parent
+            .children
+            .iter()
+            .position(|l| l.borrow().id == self.id)
+        {
+            let index = match below {
+                true => index + 1,
+                false => match index.checked_sub(1) {
+                    Some(index) => index,
+                    None => return None,
+                },
+            };
+            parent.children.get(index).cloned()
+        } else {
+            None
+        }
+    }
+}
+
+pub struct NodeIterator {
+    node: Link,
+}
+
+impl NodeIterator {
+    fn new(node: Link) -> NodeIterator {
+        NodeIterator { node }
+    }
+
+    pub fn content(&self) -> impl Deref<Target = String> + '_ {
+        Ref::map(self.node.borrow(), |n| &n.content)
     }
 
     pub fn id(&self) -> i32 {
-        self.current.id
+        self.node.borrow().id
     }
 
-    pub fn children_iter<'b>(&'b self) -> impl 'b + Iterator<Item = NodeIterator<'a>> {
-        self.current
+    pub fn children_iter(&self) -> impl Iterator<Item = NodeIterator> {
+        self.node
+            .borrow()
             .children
-            .iter()
-            .map(move |i| self.nodes.get(i).unwrap())
-            .map(move |n| Self::new(n, self.nodes, self.active_id))
+            .clone()
+            .into_iter()
+            .map(|n| Self::new(n))
     }
 
-    pub fn traverse(self, traversal: TraversalType) -> impl Iterator<Item = NodeIterator<'a>> {
+    pub fn traverse(self, traversal: TraversalType) -> impl Iterator<Item = NodeIterator> {
         TreeTraversalIterator::new(self, traversal)
     }
 
-    pub fn next_parent(&mut self) -> Option<i32> {
-        match self.nodes.get(&self.active_id).unwrap().parent {
-            Some(0) => None,
-            Some(id) => {
-                self.active_id = id;
-                Some(id)
-            }
-            None => panic!("all nonroot nodes should have parents"),
-        }
+    /// Iterate up to the parent
+    pub fn next_parent(&mut self) -> Option<NodeIterator> {
+        self.node
+            .borrow()
+            .parent
+            .clone()
+            .map(|n| NodeIterator::new(n))
     }
 
-    pub fn next_sibling(&mut self) -> Option<i32> {
-        match self.nodes.get(&self.active_id).unwrap().sibling {
-            Some(id) => {
-                self.active_id = id;
-                Some(id)
-            }
-            None => None,
-        }
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.current.id == self.active_id
+    /// Iterate to the previous sibling
+    pub fn next_sibling(&mut self, below: bool) -> Option<NodeIterator> {
+        self.node
+            .borrow()
+            .get_sibling(below)
+            .map(|n| NodeIterator::new(n.clone()))
     }
 }
 
-struct TreeTraversalIterator<'a> {
-    deque: VecDeque<(NodeIterator<'a>, bool)>,
+struct TreeTraversalIterator {
+    deque: VecDeque<(NodeIterator, bool)>,
     traversal: TraversalType,
 }
 
@@ -427,7 +311,7 @@ pub enum TraversalType {
     Level,
 }
 
-impl<'a> TreeTraversalIterator<'a> {
+impl TreeTraversalIterator {
     fn new(itr: NodeIterator, traversal: TraversalType) -> TreeTraversalIterator {
         TreeTraversalIterator {
             deque: vec![(itr, false)].into_iter().collect(),
@@ -435,7 +319,7 @@ impl<'a> TreeTraversalIterator<'a> {
         }
     }
 
-    fn post_order(&mut self) -> Option<NodeIterator<'a>> {
+    fn post_order(&mut self) -> Option<NodeIterator> {
         let node = match self.deque.pop_back() {
             None => return None,
             Some((itr, true)) => return Some(itr),
@@ -449,7 +333,7 @@ impl<'a> TreeTraversalIterator<'a> {
         self.post_order()
     }
 
-    fn level(&mut self) -> Option<NodeIterator<'a>> {
+    fn level(&mut self) -> Option<NodeIterator> {
         let node = match self.deque.pop_front() {
             None => return None,
             Some((itr, true)) => return Some(itr),
@@ -466,8 +350,8 @@ impl<'a> TreeTraversalIterator<'a> {
     }
 }
 
-impl<'a> Iterator for TreeTraversalIterator<'a> {
-    type Item = NodeIterator<'a>;
+impl Iterator for TreeTraversalIterator {
+    type Item = NodeIterator;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.traversal {
@@ -509,17 +393,27 @@ mod tests {
     fn siblings_test() {
         let mut tree = new_test_tree();
 
-        assert_eq!(tree.active, 1);
+        assert_eq!(tree.get_active_id(), 1);
         tree.create_sibling();
-        assert_eq!(tree.active, 2);
+        assert_eq!(tree.get_active_id(), 2);
 
-        let active_node = tree.nodes.get(&tree.active).unwrap();
-        assert_eq!(active_node.parent.unwrap(), 0);
-        assert_eq!(active_node.sibling.unwrap(), 1);
+        assert_eq!(tree.active.borrow().parent.as_ref().unwrap().borrow().id, 0);
+        assert_eq!(
+            tree.active.borrow().get_sibling(false).unwrap().borrow().id,
+            1
+        );
 
-        let root_node = tree.nodes.get(&0).unwrap();
-        assert!(root_node.children.iter().any(|i| *i == 1));
-        assert!(root_node.children.iter().any(|i| *i == 2));
+        let root_node = tree.get_node(0).unwrap();
+        assert!(root_node
+            .borrow()
+            .children
+            .iter()
+            .any(|n| n.borrow().id == 1));
+        assert!(root_node
+            .borrow()
+            .children
+            .iter()
+            .any(|n| n.borrow().id == 2));
     }
 
     #[test]
@@ -527,34 +421,39 @@ mod tests {
         let mut tree = new_test_tree();
         tree.create_sibling(); // id = 2
         tree.create_sibling();
-        tree.indent().unwrap(); // id 3 under 2
+        tree.indent(false).unwrap(); // id 3 under 2
         tree.create_sibling(); // id 4 under 2
         tree.create_sibling(); // id 5 under 2
         tree.activate(4).unwrap();
         tree.create_sibling(); // id 6 under 2 (after 4, before 5)
 
-        let children = &tree.nodes.get(&2).unwrap().children;
-        assert_eq!(children.get(2), Some(&6));
-        assert_eq!(children.get(3), Some(&5));
+        let children = &tree.get_node(2).unwrap().borrow().children;
+        assert_eq!(children.get(2).unwrap().borrow().id, 6);
+        assert_eq!(children.get(3).unwrap().borrow().id, 5);
 
-        let five = tree.nodes.get(&5).unwrap();
-        assert_eq!(five.sibling, Some(6))
+        let five = tree.get_node(5).unwrap();
+        assert_eq!(
+            five.borrow().get_sibling(true).map(|s| s.borrow().id),
+            Some(6)
+        );
     }
+
+    /*
 
     #[test]
     fn indents_test() {
         let mut tree = new_test_tree();
 
-        assert!(tree.indent().is_err());
+        assert!(tree.indent(false).is_err());
         tree.create_sibling();
-        assert!(tree.indent().is_ok());
+        assert!(tree.indent(false).is_ok());
 
-        let active_node = tree.nodes.get(&tree.active).unwrap();
+        let active_node = tree.get_node(tree.active).unwrap();
         assert_eq!(active_node.parent, Some(1));
         assert_eq!(active_node.sibling, None);
         assert_eq!(active_node.id, 2);
 
-        let parent_node = tree.nodes.get(&1).unwrap();
+        let parent_node = tree.get_node(1).unwrap();
         assert!(parent_node.children.iter().any(|i| *i == 2));
     }
 
@@ -564,20 +463,20 @@ mod tests {
 
         assert!(tree.unindent().is_err()); // 1 is already top
         tree.create_sibling(); // id = 2
-        assert!(tree.indent().is_ok()); // (2 under 1)
+        assert!(tree.indent(false).is_ok()); // (2 under 1)
         assert!(tree.unindent().is_ok()); // (2 under root)
-        let two = tree.nodes.get(&2).unwrap();
+        let two = tree.get_node(2).unwrap();
         assert_eq!(two.parent, Some(0));
         assert_eq!(two.sibling, Some(1));
         println!("{:?}", two);
 
-        assert!(tree.indent().is_ok());
+        assert!(tree.indent(false).is_ok());
         tree.create_sibling(); // id = 3 (under 1)
         tree.create_sibling(); // id = 4 (under 1)
         tree.create_sibling(); // id = 5 (under 1)
         assert!(tree.unindent().is_ok()); // (5 under root)
-        assert!(tree.indent().is_ok()); // (5 under 1)
-        let five = tree.nodes.get(&5).unwrap();
+        assert!(tree.indent(false).is_ok()); // (5 under 1)
+        let five = tree.get_node(5).unwrap();
         assert_eq!(five.parent, Some(1));
         assert_eq!(five.sibling, Some(4));
     }
@@ -589,7 +488,7 @@ mod tests {
         tree.create_sibling(); // id = 2
         tree.create_sibling(); // id = 3
         tree.create_sibling(); // id = 4
-        assert!(tree.indent().is_ok()); // (4 under 3)
+        assert!(tree.indent(false).is_ok()); // (4 under 3)
         tree.create_sibling(); // id = 5 (under 3)
 
         let root_exp_children = vec![1, 2, 3];
@@ -619,7 +518,7 @@ mod tests {
         tree.create_sibling(); // id = 2
         tree.create_sibling(); // id = 3
         tree.delete().unwrap(); // id 3 deleted
-        assert!(tree.nodes.get(&3).is_none());
+        assert!(tree.get_node(3).is_none());
         assert_eq!(
             tree.nodes
                 .get(&0)
@@ -638,7 +537,7 @@ mod tests {
         tree.create_sibling(); // id = 3
         tree.activate(2).unwrap();
         tree.delete().unwrap();
-        assert!(tree.nodes.get(&2).is_none());
+        assert!(tree.get_node(2).is_none());
         assert_eq!(
             tree.nodes
                 .get(&0)
@@ -648,7 +547,7 @@ mod tests {
                 .any(|id| *id == 2),
             false
         );
-        assert_eq!(tree.nodes.get(&3).unwrap().sibling, Some(1));
+        assert_eq!(tree.get_node(3).unwrap().sibling, Some(1));
     }
 
     #[test]
@@ -656,22 +555,22 @@ mod tests {
         let mut tree = new_test_tree();
         tree.create_sibling(); // id = 2
         tree.create_sibling(); // id = 3
-        tree.indent().unwrap(); // 3 under 2
+        tree.indent(false).unwrap(); // 3 under 2
         tree.create_sibling(); // id = 4, under 2
         tree.create_sibling(); // id = 5, under 2
         tree.create_sibling(); // id = 6
-        tree.indent().unwrap(); // 6 under 5
+        tree.indent(false).unwrap(); // 6 under 5
         tree.create_sibling(); // id = 7
-        tree.indent().unwrap(); // 7 under 6
+        tree.indent(false).unwrap(); // 7 under 6
 
         tree.activate(2).unwrap();
         tree.delete().unwrap();
-        assert!(tree.nodes.get(&2).is_none());
-        assert!(tree.nodes.get(&3).is_none());
-        assert!(tree.nodes.get(&4).is_none());
-        assert!(tree.nodes.get(&5).is_none());
-        assert!(tree.nodes.get(&6).is_none());
-        assert!(tree.nodes.get(&7).is_none());
+        assert!(tree.get_node(2).is_none());
+        assert!(tree.get_node(3).is_none());
+        assert!(tree.get_node(4).is_none());
+        assert!(tree.get_node(5).is_none());
+        assert!(tree.get_node(6).is_none());
+        assert!(tree.get_node(7).is_none());
         assert_eq!(
             tree.nodes
                 .get(&0)
@@ -695,14 +594,14 @@ mod tests {
 
         // With own sibling
         tree.create_sibling(); // id = 2
-        tree.indent().unwrap(); // 2 under 1
+        tree.indent(false).unwrap(); // 2 under 1
         tree.create_sibling(); // id = 3
         tree.delete().unwrap(); // delete 3
-        assert_eq!(tree.active, 2);
+        assert_eq!(tree.get_active_id(), 2);
 
         // With no sibling
         tree.delete().unwrap(); // delete 2
-        assert_eq!(tree.active, 1);
+        assert_eq!(tree.get_active_id(), 1);
 
         // Tree is just root and 1 at this point.
         // With self as sibling and first in list
@@ -710,7 +609,7 @@ mod tests {
         tree.create_sibling(); // id = 5
         tree.activate(4).unwrap();
         tree.delete().unwrap();
-        assert_eq!(tree.active, 5);
+        assert_eq!(tree.get_active_id(), 5);
     }
 
     #[test]
@@ -721,7 +620,7 @@ mod tests {
         tree.create_sibling_above(); // id = 3
         tree.create_sibling_above(); // id = 4
         tree.activate(1).unwrap();
-        tree.indent().unwrap(); // 1 under 2
+        tree.indent(false).unwrap(); // 1 under 2
         tree.create_sibling_above(); // id = 5
         tree.create_sibling(); // id = 6
 
@@ -732,9 +631,9 @@ mod tests {
         //      6. --
         //      1. --
 
-        let root = tree.nodes.get(&0).unwrap();
+        let root = tree.get_node(0).unwrap();
         assert_eq!(root.children, [4, 3, 2]);
-        let two = tree.nodes.get(&2).unwrap();
+        let two = tree.get_node(2).unwrap();
         assert_eq!(two.children, [5, 6, 1]);
     }
 
@@ -743,7 +642,7 @@ mod tests {
         let mut tree = new_test_tree();
 
         tree.create_sibling(); // id = 2
-        tree.indent().unwrap(); // 2 under 1
+        tree.indent(false).unwrap(); // 2 under 1
         tree.create_sibling(); // id = 3 under 1
         tree.create_sibling(); // id = 4 under 1
         tree.create_sibling(); // id = 5 under 1
@@ -752,7 +651,7 @@ mod tests {
         let (subtree, parent, sibling) = tree.get_subtree();
 
         assert_eq!(subtree.root, 1);
-        let root = subtree.nodes.get(&subtree.root).unwrap();
+        let root = subtree.get_node(subtree.root).unwrap();
         assert_eq!(root.children, [2, 3, 4, 5]);
         assert_eq!(root.sibling, None);
         assert_eq!(root.parent, None);
@@ -775,17 +674,17 @@ mod tests {
         //      10.
         tree.create_sibling(); // id = 2
         tree.create_sibling(); // id = 3
-        tree.indent().unwrap();
+        tree.indent(false).unwrap();
         tree.create_sibling(); // id = 4
         tree.create_sibling(); // id = 5
-        tree.indent().unwrap();
+        tree.indent(false).unwrap();
         tree.create_sibling(); // id = 6
         tree.unindent().unwrap();
         tree.create_sibling(); // id = 7
         tree.unindent().unwrap();
         tree.create_sibling(); // id = 8
         tree.create_sibling(); // id = 9
-        tree.indent().unwrap();
+        tree.indent(false).unwrap();
         tree.create_sibling(); // id = 10
         tree
     }
@@ -828,8 +727,9 @@ mod tests {
         tree.activate(7).unwrap();
         tree.indent_as_first().unwrap();
 
-        let seven = tree.nodes.get(&7).unwrap();
+        let seven = tree.get_node(7).unwrap();
         assert_eq!(seven.parent, Some(2));
         assert_eq!(seven.sibling, None);
     }
+    */
 }
