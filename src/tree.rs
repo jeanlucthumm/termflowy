@@ -74,15 +74,20 @@ impl Tree {
         node.borrow_mut().parent = Some(parent.clone());
         parent
             .borrow_mut()
-            .insert_child_relative(self.active.borrow().id, dir, node)
+            .insert_child_relative(self.active.borrow().id, dir, node.clone())
             .expect("child not found in its own parent");
+        self.register_in_table(&node);
+    }
+
+    fn register_in_table(&mut self, node: &Link) {
+        self.id_table.insert(node.borrow().id, node.clone());
     }
 
     /// Indents the active node under its up sibling. Returns errors if there is no such sibling.
     /// If `first` then the active node will be placed as the first child of the sibling, otherwise
     /// last.
     pub fn indent(&mut self, first: bool) -> Result<(), String> {
-        let sibling = match self.active.borrow().get_sibling(false) {
+        let sibling = match self.active.borrow().get_sibling(Above) {
             Some(x) => x,
             None => return Err(String::from("already at max indentation level")),
         };
@@ -213,6 +218,7 @@ impl Node {
         Ok(())
     }
 
+    /// Inserts a child node but does not update the parent field of the child
     fn insert_child_last(&mut self, child: Link) {
         self.children.push(child);
     }
@@ -229,7 +235,7 @@ impl Node {
     /// Gets the sibling above or below the current node. This will borrow the parent to access
     /// its children and will borrow a Link to itself. Siblings are nodes on the same layer as
     /// the current node.
-    fn get_sibling(&self, below: bool) -> Option<Link> {
+    fn get_sibling(&self, dir: Dir) -> Option<Link> {
         let parent = match self.parent {
             Some(ref parent) => parent.borrow(),
             None => return None,
@@ -239,9 +245,9 @@ impl Node {
             .iter()
             .position(|l| l.borrow().id == self.id)
         {
-            let index = match below {
-                true => index + 1,
-                false => match index.checked_sub(1) {
+            let index = match dir {
+                Below => index + 1,
+                Above => match index.checked_sub(1) {
                     Some(index) => index,
                     None => return None,
                 },
@@ -293,10 +299,10 @@ impl NodeIterator {
     }
 
     /// Iterate to the previous sibling
-    pub fn next_sibling(&mut self, below: bool) -> Option<NodeIterator> {
+    pub fn next_sibling(&mut self, dir: Dir) -> Option<NodeIterator> {
         self.node
             .borrow()
-            .get_sibling(below)
+            .get_sibling(dir)
             .map(|n| NodeIterator::new(n.clone()))
     }
 }
@@ -390,6 +396,24 @@ mod tests {
     }
 
     #[test]
+    fn get_sibling_test() {
+        let node = Node::new_link(0, None);
+        assert!(node.borrow().get_sibling(Above).is_none());
+        assert!(node.borrow().get_sibling(Below).is_none());
+
+        let first = Node::new_link(1, Some(node.clone()));
+        node.borrow_mut().insert_child_last(first.clone());
+        first.borrow_mut().parent = Some(node.clone());
+
+        let second = Node::new_link(2, Some(node.clone()));
+        node.borrow_mut().insert_child_last(second.clone());
+        first.borrow_mut().parent = Some(node.clone());
+
+        assert_eq!(first.borrow().get_sibling(Below).map(|s| s.borrow().id), Some(2));
+        assert_eq!(second.borrow().get_sibling(Above).map(|s| s.borrow().id), Some(2));
+    }
+
+    #[test]
     fn siblings_test() {
         let mut tree = new_test_tree();
 
@@ -399,7 +423,7 @@ mod tests {
 
         assert_eq!(tree.active.borrow().parent.as_ref().unwrap().borrow().id, 0);
         assert_eq!(
-            tree.active.borrow().get_sibling(false).unwrap().borrow().id,
+            tree.active.borrow().get_sibling(Above).unwrap().borrow().id,
             1
         );
 
@@ -418,6 +442,11 @@ mod tests {
 
     #[test]
     fn create_sibling_in_middle_of_list() {
+        // 2.
+        //   3.
+        //   4.
+        //   6.
+        //   5.
         let mut tree = new_test_tree();
         tree.create_sibling(); // id = 2
         tree.create_sibling();
@@ -431,10 +460,10 @@ mod tests {
         assert_eq!(children.get(2).unwrap().borrow().id, 6);
         assert_eq!(children.get(3).unwrap().borrow().id, 5);
 
-        let five = tree.get_node(5).unwrap();
+        let six = tree.get_node(6).unwrap();
         assert_eq!(
-            five.borrow().get_sibling(true).map(|s| s.borrow().id),
-            Some(6)
+            six.borrow().get_sibling(Below).map(|s| s.borrow().id),
+            Some(5)
         );
     }
 
