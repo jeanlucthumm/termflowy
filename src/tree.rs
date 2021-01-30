@@ -105,11 +105,28 @@ impl Tree {
     }
 
     pub fn unindent(&mut self) -> Result<(), String> {
-        todo!()
+        // Break parent-child relationship
+        let parent = self.active.borrow().parent.clone().unwrap();
+        if parent.borrow().is_root() {
+            return Err(String::from("cannot unindent further"));
+        }
+        parent.borrow_mut().remove_child(self.active.borrow().id);
+
+        // Reinsert in grandparent
+        let grandparent = parent.borrow().parent.clone().unwrap();
+        grandparent
+            .borrow_mut()
+            .insert_child_relative(parent.borrow().id, Below, self.active.clone())
+            .expect("could not find parent in grandparent while unindenting");
+        self.active.borrow_mut().parent = Some(grandparent);
+        Ok(())
     }
 
     pub fn activate(&mut self, id: i32) -> Result<(), String> {
-        self.active = self.get_node(id).cloned().ok_or("could not find id to activate".to_string())?;
+        self.active = self
+            .get_node(id)
+            .cloned()
+            .ok_or("could not find id to activate".to_string())?;
         Ok(())
     }
 
@@ -198,12 +215,7 @@ impl Node {
     }
 
     /// Inserts a `child` above or below an existing child with an id of `relative_id` (if it exists).
-    fn insert_child_relative(
-        &mut self,
-        relative_id: i32,
-        dir: Dir,
-        child: Link,
-    ) -> Result<(), ()> {
+    fn insert_child_relative(&mut self, relative_id: i32, dir: Dir, child: Link) -> Result<(), ()> {
         let index = match (
             self.children
                 .iter()
@@ -256,6 +268,10 @@ impl Node {
         } else {
             None
         }
+    }
+
+    fn is_root(&self) -> bool {
+        self.id == 0
     }
 }
 
@@ -395,6 +411,10 @@ mod tests {
         Tree::new(Box::new(TestGen::new()))
     }
 
+    fn get_id(link: &Link) -> i32 {
+        link.borrow().id
+    }
+
     #[test]
     fn get_sibling_test() {
         let node = Node::new_link(0, None);
@@ -409,8 +429,14 @@ mod tests {
         node.borrow_mut().insert_child_last(second.clone());
         first.borrow_mut().parent = Some(node.clone());
 
-        assert_eq!(first.borrow().get_sibling(Below).map(|s| s.borrow().id), Some(2));
-        assert_eq!(second.borrow().get_sibling(Above).map(|s| s.borrow().id), Some(2));
+        assert_eq!(
+            first.borrow().get_sibling(Below).map(|s| s.borrow().id),
+            Some(2)
+        );
+        assert_eq!(
+            second.borrow().get_sibling(Above).map(|s| s.borrow().id),
+            Some(2)
+        );
     }
 
     #[test]
@@ -467,8 +493,6 @@ mod tests {
         );
     }
 
-    /*
-
     #[test]
     fn indents_test() {
         let mut tree = new_test_tree();
@@ -477,27 +501,29 @@ mod tests {
         tree.create_sibling();
         assert!(tree.indent(false).is_ok());
 
-        let active_node = tree.get_node(tree.active).unwrap();
-        assert_eq!(active_node.parent, Some(1));
-        assert_eq!(active_node.sibling, None);
+        let active_node = tree.active.borrow();
+        assert_eq!(active_node.parent.as_ref().map(get_id), Some(1));
         assert_eq!(active_node.id, 2);
 
         let parent_node = tree.get_node(1).unwrap();
-        assert!(parent_node.children.iter().any(|i| *i == 2));
+        assert!(parent_node
+            .borrow()
+            .children
+            .iter()
+            .any(|n| n.borrow().id == 2));
     }
 
     #[test]
     fn unindents_test() {
+        // 1.
         let mut tree = new_test_tree();
-
         assert!(tree.unindent().is_err()); // 1 is already top
         tree.create_sibling(); // id = 2
         assert!(tree.indent(false).is_ok()); // (2 under 1)
         assert!(tree.unindent().is_ok()); // (2 under root)
         let two = tree.get_node(2).unwrap();
-        assert_eq!(two.parent, Some(0));
-        assert_eq!(two.sibling, Some(1));
-        println!("{:?}", two);
+        assert_eq!(two.borrow().parent.as_ref().map(get_id), Some(0));
+        // TODO figure out why printing a Link causes stack overflow
 
         assert!(tree.indent(false).is_ok());
         tree.create_sibling(); // id = 3 (under 1)
@@ -506,9 +532,10 @@ mod tests {
         assert!(tree.unindent().is_ok()); // (5 under root)
         assert!(tree.indent(false).is_ok()); // (5 under 1)
         let five = tree.get_node(5).unwrap();
-        assert_eq!(five.parent, Some(1));
-        assert_eq!(five.sibling, Some(4));
+        assert_eq!(five.borrow().parent.as_ref().map(get_id), Some(1));
     }
+
+    /*
 
     #[test]
     fn node_iterator() {
