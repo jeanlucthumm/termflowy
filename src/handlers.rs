@@ -186,7 +186,7 @@ pub fn command_d(p: HandlerInput) -> Result<HandlerOutput, String> {
             let pixel_state = p.raster.get(cursor.pos).unwrap();
             p.tree.activate(pixel_state.id())?;
             let (subtree, parent, sibling) = p.tree.get_subtree();
-            p.tree.delete()?; // default active selection matches 'dd'
+            p.tree.delete(); // default active selection matches 'dd'
             let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
             let pos = find_left_text(raster.browser((pos.0, cursor.col))?, cursor.col as u32)?;
             Ok(HandlerOutput::new()
@@ -391,7 +391,7 @@ pub fn insert_backspace(p: HandlerInput) -> Result<HandlerOutput, String> {
                 None => return Err(String::from("cannot backspace over first bullet")),
             },
         };
-        p.tree.delete()?;
+        p.tree.delete();
         p.tree.activate(new_active.id())?;
         render_and_make_insert_output(p.tree, p.win, 0)
     }

@@ -130,8 +130,20 @@ impl Tree {
         Ok(())
     }
 
-    pub fn delete(&mut self) -> Result<(), String> {
-        todo!()
+    pub fn delete(&mut self) {
+        // Activate either above sibling or parent
+        let active = self.active.clone();
+        let active = active.borrow();
+        if let Some(sibling) = active.get_sibling(Above) {
+            self.active = sibling;
+        } else {
+            self.active = active.parent.clone().unwrap();
+        }
+
+        // Remove the node from its parent and erase from table
+        let parent = active.parent.as_ref().unwrap();
+        parent.borrow_mut().remove_child(active.id);
+        self.id_table.remove(&active.id).unwrap();
     }
 
     fn get_id_gen(&self) -> &dyn IdGenerator {
@@ -435,7 +447,7 @@ mod tests {
         );
         assert_eq!(
             second.borrow().get_sibling(Above).map(|s| s.borrow().id),
-            Some(2)
+            Some(1)
         );
     }
 
@@ -535,8 +547,6 @@ mod tests {
         assert_eq!(five.borrow().parent.as_ref().map(get_id), Some(1));
     }
 
-    /*
-
     #[test]
     fn node_iterator() {
         let mut tree = new_test_tree();
@@ -554,8 +564,8 @@ mod tests {
 
         assert_eq!(root_exp_children.len(), root_children.len());
         for child in &root_children {
-            assert!(root_exp_children.iter().any(|&x| x == child.current.id));
-            if child.current.id == 3 {
+            assert!(root_exp_children.iter().any(|&x| x == child.id()));
+            if child.id() == 3 {
                 three_itr = Some(child);
             }
         }
@@ -564,7 +574,7 @@ mod tests {
         let three_children: Vec<NodeIterator> = three_itr.unwrap().children_iter().collect();
         assert_eq!(three_children.len(), three_exp_children.len());
         for child in three_children {
-            assert!(three_exp_children.iter().any(|&x| x == child.current.id));
+            assert!(three_exp_children.iter().any(|&x| x == child.id()));
         }
     }
 
@@ -573,18 +583,13 @@ mod tests {
         let mut tree = new_test_tree();
         tree.create_sibling(); // id = 2
         tree.create_sibling(); // id = 3
-        tree.delete().unwrap(); // id 3 deleted
+        tree.delete(); // id 3 deleted
         assert!(tree.get_node(3).is_none());
-        assert_eq!(
-            tree.nodes
-                .get(&0)
-                .unwrap()
-                .children
-                .iter()
-                .any(|id| *id == 3),
-            false
-        );
+        assert!(tree.get_node(0).unwrap().borrow().children.iter().all(|n| n.borrow().id != 3));
     }
+
+    /*
+
 
     #[test]
     fn activate_and_delete() {
