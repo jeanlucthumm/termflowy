@@ -130,27 +130,45 @@ impl Tree {
         Ok(())
     }
 
-    pub fn delete(&mut self) {
-        // Activate either above sibling or parent
-        let active = self.active.clone();
-        let active = active.borrow();
-        if let Some(sibling) = active.get_sibling(Above) {
-            self.active = sibling;
-        } else {
-            self.active = active.parent.clone().unwrap();
+    pub fn delete(&mut self) -> Result<(), String> {
+        let active_link = self.active.clone();
+        let active = active_link.borrow();
+        let parent = active.parent.as_ref().unwrap();
+
+        match (
+            parent.borrow(),
+            active.get_sibling(Above),
+            active.get_sibling(Below),
+        ) {
+            (p, _, _) if p.is_root() && p.children.len() == 1 => {
+                return Err(String::from("cannot delete last node"))
+            }
+            (p, None, None) if !p.is_root() => self.active = parent.clone(),
+            (_, _, Some(below)) => self.active = below,
+            (_, Some(above), None) => self.active = above,
+            _ => panic!(),
         }
 
-        // Remove the node from its parent and erase from table
-        let parent = active.parent.as_ref().unwrap();
+        // Get rid of old node and children
         parent.borrow_mut().remove_child(active.id);
-        self.id_table.remove(&active.id).unwrap();
+        let ids: Vec<i32> = NodeIterator::new(active_link.clone())
+            .traverse(TraversalType::PostOrder)
+            .map(|n| n.id())
+            .collect();
+        for id in ids {
+            self.id_table
+                .remove(&id)
+                .expect(&format!("could not find node to remove: {}", id));
+        }
+
+        Ok(())
     }
 
     fn get_id_gen(&self) -> &dyn IdGenerator {
         self.generator.as_ref()
     }
 
-    pub fn get_subtree(&self) -> (Subtree, i32, Option<i32>) {
+    pub fn get_subtree(&self) -> Subtree {
         todo!()
     }
 
@@ -182,6 +200,8 @@ impl Tree {
 #[derive(Debug, Clone)]
 pub struct Subtree {
     root: Link,
+    parent: Link,
+    above_sibling: Link,
 }
 
 impl Subtree {
@@ -224,6 +244,10 @@ impl Node {
 
     fn new_link(id: i32, parent: Option<Link>) -> Link {
         Link::new(RefCell::new(Self::new(id, parent)))
+    }
+
+    fn new_link_from_other(link: &Link) -> Link {
+        Link::new(RefCell::new(link.borrow().clone()))
     }
 
     /// Inserts a `child` above or below an existing child with an id of `relative_id` (if it exists).
@@ -287,6 +311,16 @@ impl Node {
     }
 }
 
+fn make_unique_subtree(node: Link) -> Link {
+    let mut new_node = node.borrow().clone();
+    new_node.children = new_node
+        .children
+        .into_iter()
+        .map(|n| make_unique_subtree(n))
+        .collect();
+    Link::new(RefCell::new(new_node))
+}
+
 pub struct NodeIterator {
     node: Link,
 }
@@ -317,7 +351,6 @@ impl NodeIterator {
         TreeTraversalIterator::new(self, traversal)
     }
 
-    /// Iterate up to the parent
     pub fn next_parent(&mut self) -> Option<NodeIterator> {
         self.node
             .borrow()
@@ -326,7 +359,6 @@ impl NodeIterator {
             .map(|n| NodeIterator::new(n))
     }
 
-    /// Iterate to the previous sibling
     pub fn next_sibling(&mut self, dir: Dir) -> Option<NodeIterator> {
         self.node
             .borrow()
@@ -427,6 +459,10 @@ mod tests {
         link.borrow().id
     }
 
+    fn get_children_ids(link: &Link) -> Vec<i32> {
+        link.borrow().children.iter().map(get_id).collect()
+    }
+
     #[test]
     fn get_sibling_test() {
         let node = Node::new_link(0, None);
@@ -435,11 +471,9 @@ mod tests {
 
         let first = Node::new_link(1, Some(node.clone()));
         node.borrow_mut().insert_child_last(first.clone());
-        first.borrow_mut().parent = Some(node.clone());
 
         let second = Node::new_link(2, Some(node.clone()));
         node.borrow_mut().insert_child_last(second.clone());
-        first.borrow_mut().parent = Some(node.clone());
 
         assert_eq!(
             first.borrow().get_sibling(Below).map(|s| s.borrow().id),
@@ -449,6 +483,19 @@ mod tests {
             second.borrow().get_sibling(Above).map(|s| s.borrow().id),
             Some(1)
         );
+    }
+
+    #[test]
+    fn make_unique_subtree_test() {
+        let node = Node::new_link(0, None);
+        let first = Node::new_link(1, Some(node.clone()));
+        node.borrow_mut().insert_child_last(first.clone());
+
+        let subtree = make_unique_subtree(node.clone());
+        first.borrow_mut().id = 5;
+
+        assert_eq!(subtree.borrow().children[0].borrow().id, 1);
+        assert_eq!(node.borrow().children[0].borrow().id, 5);
     }
 
     #[test]
@@ -583,13 +630,16 @@ mod tests {
         let mut tree = new_test_tree();
         tree.create_sibling(); // id = 2
         tree.create_sibling(); // id = 3
-        tree.delete(); // id 3 deleted
+        tree.delete().unwrap(); // id 3 deleted
         assert!(tree.get_node(3).is_none());
-        assert!(tree.get_node(0).unwrap().borrow().children.iter().all(|n| n.borrow().id != 3));
+        assert!(tree
+            .get_node(0)
+            .unwrap()
+            .borrow()
+            .children
+            .iter()
+            .all(|n| n.borrow().id != 3));
     }
-
-    /*
-
 
     #[test]
     fn activate_and_delete() {
@@ -599,16 +649,13 @@ mod tests {
         tree.activate(2).unwrap();
         tree.delete().unwrap();
         assert!(tree.get_node(2).is_none());
-        assert_eq!(
-            tree.nodes
-                .get(&0)
-                .unwrap()
-                .children
-                .iter()
-                .any(|id| *id == 2),
-            false
-        );
-        assert_eq!(tree.get_node(3).unwrap().sibling, Some(1));
+        assert!(tree
+            .get_node(0)
+            .unwrap()
+            .borrow()
+            .children
+            .iter()
+            .all(|n| n.borrow().id != 2));
     }
 
     #[test]
@@ -632,15 +679,13 @@ mod tests {
         assert!(tree.get_node(5).is_none());
         assert!(tree.get_node(6).is_none());
         assert!(tree.get_node(7).is_none());
-        assert_eq!(
-            tree.nodes
-                .get(&0)
-                .unwrap()
-                .children
-                .iter()
-                .any(|id| *id == 2),
-            false
-        );
+        assert!(tree
+            .get_node(0)
+            .unwrap()
+            .borrow()
+            .children
+            .iter()
+            .all(|n| n.borrow().id != 2));
     }
 
     #[test]
@@ -654,6 +699,9 @@ mod tests {
         let mut tree = new_test_tree();
 
         // With own sibling
+        // 1.
+        //   2.
+        //   3. <-- deleted
         tree.create_sibling(); // id = 2
         tree.indent(false).unwrap(); // 2 under 1
         tree.create_sibling(); // id = 3
@@ -664,8 +712,9 @@ mod tests {
         tree.delete().unwrap(); // delete 2
         assert_eq!(tree.get_active_id(), 1);
 
-        // Tree is just root and 1 at this point.
-        // With self as sibling and first in list
+        // 1.
+        // 4. <-- deleted
+        // 5.
         tree.create_sibling(); // id = 4
         tree.create_sibling(); // id = 5
         tree.activate(4).unwrap();
@@ -693,33 +742,41 @@ mod tests {
         //      1. --
 
         let root = tree.get_node(0).unwrap();
-        assert_eq!(root.children, [4, 3, 2]);
+        assert_eq!(get_children_ids(&root), [4, 3, 2]);
         let two = tree.get_node(2).unwrap();
-        assert_eq!(two.children, [5, 6, 1]);
+        assert_eq!(get_children_ids(&two), [5, 6, 1]);
     }
 
     #[test]
     fn get_subtree_test() {
         let mut tree = new_test_tree();
 
+        // 1.
+        //   2.
+        //     3.
+        //   4.
+        //   5.
         tree.create_sibling(); // id = 2
         tree.indent(false).unwrap(); // 2 under 1
         tree.create_sibling(); // id = 3 under 1
         tree.create_sibling(); // id = 4 under 1
         tree.create_sibling(); // id = 5 under 1
+        tree.activate(3).unwrap();
+        tree.indent(false).unwrap();
 
         tree.activate(1).unwrap();
-        let (subtree, parent, sibling) = tree.get_subtree();
+        let subtree = tree.get_subtree();
 
-        assert_eq!(subtree.root, 1);
-        let root = subtree.get_node(subtree.root).unwrap();
-        assert_eq!(root.children, [2, 3, 4, 5]);
-        assert_eq!(root.sibling, None);
-        assert_eq!(root.parent, None);
-
-        assert_eq!(parent, 0);
-        assert_eq!(sibling, None);
+        let level_ids: Vec<i32> = subtree
+            .root_itr()
+            .traverse(TraversalType::Level)
+            .map(|n| n.id())
+            .collect();
+        assert_eq!(level_ids, [1, 2, 4, 5, 3]);
     }
+
+    /*
+
 
     fn new_deep_tree() -> Tree {
         let mut tree = new_test_tree();

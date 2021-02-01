@@ -185,16 +185,14 @@ pub fn command_d(p: HandlerInput) -> Result<HandlerOutput, String> {
         Some("d") => {
             let pixel_state = p.raster.get(cursor.pos).unwrap();
             p.tree.activate(pixel_state.id())?;
-            let (subtree, parent, sibling) = p.tree.get_subtree();
-            p.tree.delete(); // default active selection matches 'dd'
+            let subtree = p.tree.get_subtree();
+            p.tree.delete()?; // default active selection matches 'dd'
             let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
             let pos = find_left_text(raster.browser((pos.0, cursor.col))?, cursor.col as u32)?;
             Ok(HandlerOutput::new()
                 .set_cursor(Cursor::new_command(pos))
                 .set_clipboard(Clipboard::Tree(subtree.clone()))
                 .set_history_item(HistoryItem::Tree {
-                    parent,
-                    sibling,
                     tree: subtree,
                     cursor: p.cursor,
                 })
@@ -213,7 +211,7 @@ pub fn command_y(p: HandlerInput) -> Result<HandlerOutput, String> {
         Some("y") => {
             let pixel_state = p.raster.get(cursor.pos).unwrap();
             p.tree.activate(pixel_state.id())?;
-            let (subtree, _, _) = p.tree.get_subtree();
+            let subtree = p.tree.get_subtree();
             Ok(HandlerOutput::new().set_clipboard(Clipboard::Tree(subtree)))
         }
         Some(_) => Ok(HandlerOutput::new().set_cursor(p.cursor)),
@@ -248,32 +246,33 @@ pub fn command_p_shift_p(p: HandlerInput) -> Result<HandlerOutput, String> {
 }
 
 pub fn command_u(p: HandlerInput) -> Result<HandlerOutput, String> {
-    match p.history.pop_back() {
-        Some(HistoryItem::Tree {
-            parent,
-            sibling,
-            tree,
-            cursor: history_cursor,
-        }) => {
-            match (parent, sibling) {
-                (_, Some(sibling)) => {
-                    p.tree.activate(sibling)?;
-                    p.tree.insert_subtree(tree, Below);
-                }
-                (parent, None) => {
-                    p.tree.activate(parent)?;
-                    p.tree.insert_subtree(tree, Below);
-                    p.tree.indent(true)?;
-                }
-            }
-            let (raster, _) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
-            Ok(HandlerOutput::new()
-                .set_raster(raster)
-                .set_cursor(history_cursor))
-        }
-        Some(HistoryItem::Text { .. }) => todo!(),
-        None => return Ok(HandlerOutput::new()),
-    }
+    todo!();
+    // match p.history.pop_back() {
+    //     Some(HistoryItem::Tree {
+    //         parent,
+    //         sibling,
+    //         tree,
+    //         cursor: history_cursor,
+    //     }) => {
+    //         match (parent, sibling) {
+    //             (_, Some(sibling)) => {
+    //                 p.tree.activate(sibling)?;
+    //                 p.tree.insert_subtree(tree, Below);
+    //             }
+    //             (parent, None) => {
+    //                 p.tree.activate(parent)?;
+    //                 p.tree.insert_subtree(tree, Below);
+    //                 p.tree.indent(true)?;
+    //             }
+    //         }
+    //         let (raster, _) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
+    //         Ok(HandlerOutput::new()
+    //             .set_raster(raster)
+    //             .set_cursor(history_cursor))
+    //     }
+    //     Some(HistoryItem::Text { .. }) => todo!(),
+    //     None => return Ok(HandlerOutput::new()),
+    // }
 }
 
 fn find_left_text(b: Browser, col: u32) -> Result<Point, String> {
@@ -391,7 +390,7 @@ pub fn insert_backspace(p: HandlerInput) -> Result<HandlerOutput, String> {
                 None => return Err(String::from("cannot backspace over first bullet")),
             },
         };
-        p.tree.delete();
+        p.tree.delete()?;
         p.tree.activate(new_active.id())?;
         render_and_make_insert_output(p.tree, p.win, 0)
     }

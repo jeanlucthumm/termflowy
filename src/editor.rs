@@ -263,8 +263,6 @@ pub enum Clipboard {
 
 pub enum HistoryItem {
     Tree {
-        parent: i32,
-        sibling: Option<i32>,
         tree: tree::Subtree,
         /// Cursor state when this history item was created
         cursor: Cursor,
