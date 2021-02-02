@@ -16,7 +16,7 @@ mod tree;
 
 struct RenderStats {
     key_render_times: Vec<Duration>,
-    loop_times: Vec<Duration>,
+    loop_times: Vec<Duration>, 
 }
 
 pub struct PanelUpdate {

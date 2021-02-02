@@ -245,7 +245,7 @@ pub fn command_p_shift_p(p: HandlerInput) -> Result<HandlerOutput, String> {
         .set_raster(raster))
 }
 
-pub fn command_u(p: HandlerInput) -> Result<HandlerOutput, String> {
+pub fn command_u(_p: HandlerInput) -> Result<HandlerOutput, String> {
     todo!();
     // match p.history.pop_back() {
     //     Some(HistoryItem::Tree {
