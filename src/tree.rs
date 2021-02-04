@@ -383,6 +383,10 @@ mod tests {
         link.borrow().children.iter().map(get_id).collect()
     }
 
+    fn get_itr_id(itr: NodeIterator) -> i32 {
+        itr.id()
+    }
+
     #[test]
     fn new_tree_has_active() {
         let tree = new_test_tree();
@@ -737,7 +741,7 @@ mod tests {
     }
 
     #[test]
-   fn level_traversal() {
+    fn level_traversal() {
         let tree = new_deep_tree();
         let in_order_ids: Vec<i32> = tree
             .root_iter()
@@ -745,5 +749,41 @@ mod tests {
             .map(|n| n.id())
             .collect();
         assert_eq!(in_order_ids, [0, 1, 2, 7, 8, 3, 4, 6, 9, 10, 5]);
+    }
+
+    #[test]
+    fn insert_subtree_test() {
+        let mut tree = new_deep_tree();
+
+        // 1.
+        //   2.
+        //   3.
+        //   4.
+        //   5.
+        let mut subtree_maker = new_test_tree();
+        subtree_maker.create_sibling();
+        subtree_maker.indent(false).unwrap();
+        subtree_maker.create_sibling();
+        subtree_maker.create_sibling();
+        subtree_maker.create_sibling();
+
+        subtree_maker.activate(1).unwrap();
+        let subtree = subtree_maker.get_subtree();
+
+        tree.activate(7).unwrap();
+        tree.insert_subtree(subtree, Below);
+        let ids: Vec<i32> = tree
+            .root_iter()
+            .traverse(TraversalType::Level)
+            .map(get_itr_id)
+            .collect();
+        assert_eq!(
+            ids,
+            [
+                1, 2, 7, 15, 8, //
+                3, 4, 6, 11, 12, 13, 14, 9, 10, //
+                5
+            ]
+        );
     }
 }
