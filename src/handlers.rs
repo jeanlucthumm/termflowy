@@ -10,8 +10,8 @@ use crate::raster::PixelState::*;
 use crate::raster::{Browser, Direction};
 use crate::render;
 use crate::render::{Point, Window};
-use crate::tree::Tree;
 use crate::tree::Dir::*;
+use crate::tree::Tree;
 
 const SEPARATORS: [char; 1] = [' '];
 
@@ -187,7 +187,8 @@ pub fn command_d(p: HandlerInput) -> Result<HandlerOutput, String> {
             p.tree.activate(pixel_state.id())?;
             let subtree = p.tree.get_subtree();
             p.tree.delete()?; // default active selection matches 'dd'
-            let (raster, pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
+            let (raster, pos) =
+                render::tree_render(p.win, p.tree.root_iter(), p.tree.get_active_id(), 0);
             let pos = find_left_text(raster.browser((pos.0, cursor.col))?, cursor.col as u32)?;
             Ok(HandlerOutput::new()
                 .set_cursor(Cursor::new_command(pos))
@@ -237,7 +238,8 @@ pub fn command_p_shift_p(p: HandlerInput) -> Result<HandlerOutput, String> {
             return Err(String::from("nothing to paste"));
         }
     };
-    let (raster, insert_pos) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
+    let (raster, insert_pos) =
+        render::tree_render(p.win, p.tree.root_iter(), p.tree.get_active_id(), 0);
     let pos = (insert_pos.0, cursor.pos.1);
     let pos = find_left_text(raster.browser(pos).unwrap(), pos.1 as u32)?;
     Ok(HandlerOutput::new()
@@ -265,7 +267,7 @@ pub fn command_u(_p: HandlerInput) -> Result<HandlerOutput, String> {
     //                 p.tree.indent(true)?;
     //             }
     //         }
-    //         let (raster, _) = render::tree_render(p.win, p.tree.root_iter(), 0, 0);
+    //         let (raster, _) = render::tree_render(p.win, p.tree.root_iter(), p.tree.get_active_id(), 0);
     //         Ok(HandlerOutput::new()
     //             .set_raster(raster)
     //             .set_cursor(history_cursor))
@@ -431,7 +433,7 @@ fn render_and_make_insert_output(
     win: &mut dyn Window,
     offset: usize,
 ) -> Result<HandlerOutput, String> {
-    let (raster, pos) = render::tree_render(win, tree.root_iter(), 0, 0);
+    let (raster, pos) = render::tree_render(win, tree.root_iter(), tree.get_active_id(), 0);
     Ok(HandlerOutput::new()
         .set_cursor(Insert(InsertState { offset, pos }))
         .set_raster(raster))

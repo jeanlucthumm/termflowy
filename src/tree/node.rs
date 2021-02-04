@@ -146,5 +146,15 @@ mod tests {
         let child = Node::new_link(3, Some(node.clone()));
         node.borrow_mut().insert_child_relative(2, Above, child).unwrap();
         assert_eq!(get_children_ids(&node), [1, 3, 2]);
+
+        let child = Node::new_link(4, Some(node.clone()));
+        assert!(node.borrow_mut().insert_child_relative(123123123, Above, child).is_err()); 
+    }
+
+    #[test]
+    fn remove_child_test() {
+        let node = two_node_setup();
+        node.borrow_mut().remove_child(1);
+        assert_eq!(get_children_ids(&node), []);
     }
 }

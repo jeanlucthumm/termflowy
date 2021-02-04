@@ -604,7 +604,7 @@ mod tests {
         exp.addch(CHAR_BULLET);
         clear_remaining(&mut exp);
         let tree = tree::Tree::new(Box::new(TestIdGen::new()));
-        tree_render(&mut win, tree.root_iter(), 0, 0);
+        tree_render(&mut win, tree.root_iter(), tree.get_active_id(), 0);
         assert_eq!(win, exp);
     }
 

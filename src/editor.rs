@@ -39,7 +39,7 @@ impl Editor {
         let tree = tree::Tree::new(Box::new(IdGen {
             current: Cell::new(1),
         }));
-        let (raster, pos) = render::tree_render(win, tree.root_iter(), 0, 0);
+        let (raster, pos) = render::tree_render(win, tree.root_iter(), tree.get_active_id(), 0);
         let cursor = Cursor::new_insert(pos);
         win.move_cursor(cursor.pos());
         Editor {
@@ -104,7 +104,12 @@ impl Editor {
                 let length = content.len();
                 content.insert_str(length - cursor.offset, &key);
             }
-            let (raster, pos) = tree_render(win, self.bullet_tree.root_iter(), 0, cursor.offset);
+            let (raster, pos) = tree_render(
+                win,
+                self.bullet_tree.root_iter(),
+                self.bullet_tree.get_active_id(),
+                cursor.offset,
+            );
             self.raster = raster;
             self.cursor = Insert(InsertState {
                 pos,

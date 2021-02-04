@@ -51,7 +51,8 @@ impl Tree {
 
     pub fn create_sibling_above(&mut self) {
         let node = Node::new_link(self.generator.gen(), None);
-        self.insert_node(node, Above);
+        self.insert_node(node.clone(), Above);
+        self.active = node;
     }
 
     pub fn create_sibling(&mut self) {
@@ -61,7 +62,7 @@ impl Tree {
     }
 
     pub fn insert_subtree(&mut self, subtree: Subtree, dir: Dir) {
-        let subtree = subtree.make_unique(self.generator.as_ref());
+        let subtree = subtree.make_unique_ids(self.generator.as_ref());
         let root_id = subtree.root.borrow().id;
         self.insert_node(subtree.root, dir);
         self.activate(root_id)
@@ -168,7 +169,14 @@ impl Tree {
     }
 
     pub fn get_subtree(&self) -> Subtree {
-        todo!()
+        let active = self.active.borrow();
+        let sibling = active.get_sibling(Above);
+        let parent = active.parent.clone();
+        Subtree {
+            root: self.active.clone(),
+            parent,
+            above_sibling: sibling,
+        }
     }
 
     pub fn get_mut_active_content(&mut self) -> impl DerefMut<Target = String> + '_ {
@@ -199,8 +207,8 @@ impl Tree {
 #[derive(Debug, Clone)]
 pub struct Subtree {
     root: Link,
-    parent: Link,
-    above_sibling: Link,
+    parent: Option<Link>,
+    above_sibling: Option<Link>,
 }
 
 impl Subtree {
@@ -215,7 +223,7 @@ impl Subtree {
             .collect()
     }
 
-    fn make_unique(self, id_gen: &dyn IdGenerator) -> Subtree {
+    fn make_unique_ids(self, id_gen: &dyn IdGenerator) -> Subtree {
         for node_itr in self.root_itr().traverse(TraversalType::PostOrder) {
             node_itr.node.borrow_mut().id = id_gen.gen();
         }
@@ -376,6 +384,12 @@ mod tests {
     }
 
     #[test]
+    fn new_tree_has_active() {
+        let tree = new_test_tree();
+        assert_eq!(tree.get_active_id(), 1);
+    }
+
+    #[test]
     fn make_unique_subtree_test() {
         let node = Node::new_link(0, None);
         let first = Node::new_link(1, Some(node.clone()));
@@ -386,6 +400,23 @@ mod tests {
 
         assert_eq!(subtree.borrow().children[0].borrow().id, 1);
         assert_eq!(node.borrow().children[0].borrow().id, 5);
+    }
+
+    #[test]
+    fn subtree_make_unique_ids_test() {
+        let test_gen = TestGen::new();
+        let node = Node::new_link(test_gen.gen(), None);
+        let first = Node::new_link(test_gen.gen(), Some(node.clone()));
+        node.borrow_mut().insert_child_last(first.clone());
+
+        let subtree = Subtree {
+            root: node,
+            parent: None,
+            above_sibling: None,
+        }
+        .make_unique_ids(&test_gen);
+
+        assert!(subtree.ids().into_iter().all(|i| i != 0 && i != 1));
     }
 
     #[test]
@@ -665,9 +696,6 @@ mod tests {
         assert_eq!(level_ids, [1, 2, 4, 5, 3]);
     }
 
-    /*
-
-
     fn new_deep_tree() -> Tree {
         let mut tree = new_test_tree();
         // 1.
@@ -709,7 +737,7 @@ mod tests {
     }
 
     #[test]
-    fn level_traversal() {
+   fn level_traversal() {
         let tree = new_deep_tree();
         let in_order_ids: Vec<i32> = tree
             .root_iter()
@@ -718,26 +746,4 @@ mod tests {
             .collect();
         assert_eq!(in_order_ids, [0, 1, 2, 7, 8, 3, 4, 6, 9, 10, 5]);
     }
-
-    #[test]
-    fn make_unique_subtree() {
-        let mut tree = new_deep_tree();
-        tree.activate(2).unwrap();
-        let (subtree, _, _) = tree.get_subtree();
-        let initial_ids = subtree.ids();
-        let final_ids: Vec<i32> = subtree.make_unique(tree.get_id_gen()).ids();
-        assert!(!final_ids.iter().any(|i| initial_ids.contains(i)));
-    }
-
-    #[test]
-    fn indent_as_first_test() {
-        let mut tree = new_deep_tree();
-        tree.activate(7).unwrap();
-        tree.indent_as_first().unwrap();
-
-        let seven = tree.get_node(7).unwrap();
-        assert_eq!(seven.parent, Some(2));
-        assert_eq!(seven.sibling, None);
-    }
-    */
 }
