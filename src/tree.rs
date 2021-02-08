@@ -64,8 +64,7 @@ impl Tree {
 
     pub fn insert_subtree(&mut self, subtree: Subtree, dir: Dir) {
         let subtree = subtree
-            .make_unique_ids(self.generator.as_ref())
-            .make_unique_structure();
+            .make_unique(self.generator.as_ref());
         let root_id = subtree.root.borrow().id;
 
         self.insert_node(subtree.root, dir);
@@ -263,27 +262,23 @@ impl Subtree {
             .collect()
     }
 
-    fn make_unique_ids(self, id_gen: &dyn IdGenerator) -> Subtree {
+    fn make_unique(mut self, id_gen: &dyn IdGenerator) -> Subtree {
+        self.root = make_unique_links(self.root, None);
         for node_itr in self.root_itr().traverse(TraversalType::PostOrder) {
             node_itr.node.borrow_mut().id = id_gen.gen();
         }
         self
     }
-
-    fn make_unique_structure(mut self) -> Subtree {
-        self.root = make_unique_subtree(self.root, None);
-        self
-    }
 }
 
-fn make_unique_subtree(node: Link, parent: Option<Link>) -> Link {
+fn make_unique_links(node: Link, parent: Option<Link>) -> Link {
     let new_link = Link::new(RefCell::new(node.borrow().clone()));
     new_link.borrow_mut().parent = parent;
     new_link.borrow_mut().children = node.borrow()
         .children
         .iter()
         .map(|n| {
-            make_unique_subtree(n.clone(), Some(new_link.clone()))
+            make_unique_links(n.clone(), Some(new_link.clone()))
         })
         .collect();
     new_link
@@ -449,12 +444,12 @@ mod tests {
     }
 
     #[test]
-    fn make_unique_subtree_test() {
+    fn make_unique_links_test() {
         let init_root = Node::new_link(0, None);
         let init_first = Node::new_link(1, Some(init_root.clone()));
         init_root.borrow_mut().insert_child_last(init_first.clone());
 
-        let final_root = make_unique_subtree(init_root.clone(), None);
+        let final_root = make_unique_links(init_root.clone(), None);
         let final_first = final_root.borrow().children[0].clone();
         // Init tree
         // 5.
@@ -484,7 +479,7 @@ mod tests {
             parent: None,
             above_sibling: None,
         }
-        .make_unique_ids(&test_gen);
+        .make_unique(&test_gen);
 
         assert!(subtree.ids().into_iter().all(|i| i != 0 && i != 1));
     }
