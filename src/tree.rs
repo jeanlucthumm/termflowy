@@ -63,11 +63,18 @@ impl Tree {
     }
 
     pub fn insert_subtree(&mut self, subtree: Subtree, dir: Dir) {
-        let subtree = subtree.make_unique_ids(self.generator.as_ref());
+        let subtree = subtree
+            .make_unique_ids(self.generator.as_ref())
+            .make_unique_structure();
         let root_id = subtree.root.borrow().id;
+
         self.insert_node(subtree.root, dir);
         self.activate(root_id)
             .expect("could not find subtree root right after insertion");
+
+        for n in self.active_iter().traverse(TraversalType::Level) {
+            self.register_in_table(n.node);
+        }
     }
 
     fn insert_node(&mut self, node: Link, dir: Dir) {
@@ -77,11 +84,12 @@ impl Tree {
             .borrow_mut()
             .insert_child_relative(self.active.borrow().id, dir, node.clone())
             .expect("child not found in its own parent");
-        self.register_in_table(&node);
+        self.register_in_table(node);
     }
 
-    fn register_in_table(&mut self, node: &Link) {
-        self.id_table.insert(node.borrow().id, node.clone());
+    fn register_in_table(&mut self, node: Link) {
+        let id = node.borrow().id;
+        self.id_table.insert(id, node);
     }
 
     /// Indents the active node under its up sibling. Returns errors if there is no such sibling.
@@ -261,16 +269,24 @@ impl Subtree {
         }
         self
     }
+
+    fn make_unique_structure(mut self) -> Subtree {
+        self.root = make_unique_subtree(self.root, None);
+        self
+    }
 }
 
-fn make_unique_subtree(node: Link) -> Link {
-    let mut new_node = node.borrow().clone();
-    new_node.children = new_node
+fn make_unique_subtree(node: Link, parent: Option<Link>) -> Link {
+    let new_link = Link::new(RefCell::new(node.borrow().clone()));
+    new_link.borrow_mut().parent = parent;
+    new_link.borrow_mut().children = node.borrow()
         .children
-        .into_iter()
-        .map(|n| make_unique_subtree(n))
+        .iter()
+        .map(|n| {
+            make_unique_subtree(n.clone(), Some(new_link.clone()))
+        })
         .collect();
-    Link::new(RefCell::new(new_node))
+    new_link
 }
 
 pub struct NodeIterator {
@@ -419,6 +435,13 @@ mod tests {
         itr.id()
     }
 
+    fn get_tree_ids(tree: &Tree) -> Vec<i32> {
+        tree.root_iter()
+            .traverse(TraversalType::Level)
+            .map(get_itr_id)
+            .collect()
+    }
+
     #[test]
     fn new_tree_has_active() {
         let tree = new_test_tree();
@@ -427,15 +450,26 @@ mod tests {
 
     #[test]
     fn make_unique_subtree_test() {
-        let node = Node::new_link(0, None);
-        let first = Node::new_link(1, Some(node.clone()));
-        node.borrow_mut().insert_child_last(first.clone());
+        let init_root = Node::new_link(0, None);
+        let init_first = Node::new_link(1, Some(init_root.clone()));
+        init_root.borrow_mut().insert_child_last(init_first.clone());
 
-        let subtree = make_unique_subtree(node.clone());
-        first.borrow_mut().id = 5;
+        let final_root = make_unique_subtree(init_root.clone(), None);
+        let final_first = final_root.borrow().children[0].clone();
+        // Init tree
+        // 5.
+        //   6.
+        // Final tree
+        // 0.
+        //   1.
+        init_first.borrow_mut().id = 5;
+        init_root.borrow_mut().id = 6;
 
-        assert_eq!(subtree.borrow().children[0].borrow().id, 1);
-        assert_eq!(node.borrow().children[0].borrow().id, 5);
+        assert_eq!(init_root.borrow().children[0].borrow().id, 5);
+        assert_eq!(init_first.borrow().parent.clone().unwrap().borrow().id, 6);
+
+        assert_eq!(final_root.borrow().children[0].borrow().id, 1);
+        assert_eq!(final_first.borrow().parent.clone().unwrap().borrow().id, 0);
     }
 
     #[test]
@@ -811,6 +845,21 @@ mod tests {
                 1, 2, 7, 15, 8, //
                 3, 4, 6, 11, 12, 13, 14, 9, 10, //
                 5
+            ]
+        );
+    }
+
+    #[test]
+    fn insert_subtree_simple_test() {
+        let mut tree = new_test_tree();
+        let subtree = tree.get_subtree();
+        tree.insert_subtree(subtree, Below);
+
+        assert_eq!(
+            get_tree_ids(&tree),
+            [
+                0, //
+                1, 2 //
             ]
         );
     }
