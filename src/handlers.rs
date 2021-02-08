@@ -44,6 +44,8 @@ pub fn new_insert_map() -> HashMap<String, editor::Handler> {
     map.insert(String::from("KEY_BACKSPACE"), insert_backspace);
     map.insert(String::from("^?"), insert_backspace);
     map.insert(String::from("^C"), insert_control_c);
+    // TODO this is temporary
+    map.insert(String::from("^D"), insert_control_c);
     map.insert(String::from("KEY_LEFT"), insert_arrow_keys);
     map.insert(String::from("KEY_RIGHT"), insert_arrow_keys);
     map.insert(String::from("KEY_UP"), insert_arrow_keys);

@@ -8,3 +8,7 @@ edition = "2018"
 
 [dependencies]
 ncurses = "5.99.0"
+
+[profile.dev]
+opt-level = 0
+debug = true

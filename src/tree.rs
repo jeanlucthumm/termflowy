@@ -4,6 +4,7 @@ use self::node::{Link, Node};
 use std::{
     cell::{Ref, RefCell, RefMut},
     collections::{HashMap, VecDeque},
+    fmt::{Display, Formatter},
     ops::{Deref, DerefMut},
 };
 use Dir::*;
@@ -202,6 +203,37 @@ impl Tree {
     pub fn active_iter(&self) -> NodeIterator {
         NodeIterator::new(self.active.clone())
     }
+}
+
+impl Display for Tree {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        fmt_tree(self.root_iter(), 0, self.get_active_id(), f)
+    }
+}
+
+fn fmt_tree(
+    itr: NodeIterator,
+    indent: usize,
+    active_id: i32,
+    f: &mut Formatter<'_>,
+) -> std::fmt::Result {
+    let node = itr.node.borrow();
+    let active_str = match node.id == active_id {
+        true => "ACTIVE ",
+        false => "",
+    };
+    write!(
+        f,
+        "{}{}. {}{}\n",
+        "\t".repeat(indent),
+        node.id,
+        active_str,
+        itr.node.borrow().content
+    )?;
+    for child in itr.children_iter() {
+        fmt_tree(child, indent + 1, active_id, f)?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -772,14 +804,10 @@ mod tests {
 
         tree.activate(7).unwrap();
         tree.insert_subtree(subtree, Below);
-        let ids: Vec<i32> = tree
-            .root_iter()
-            .traverse(TraversalType::Level)
-            .map(get_itr_id)
-            .collect();
         assert_eq!(
-            ids,
+            get_tree_ids(&tree),
             [
+                0, //
                 1, 2, 7, 15, 8, //
                 3, 4, 6, 11, 12, 13, 14, 9, 10, //
                 5

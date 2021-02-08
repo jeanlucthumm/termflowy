@@ -81,6 +81,10 @@ impl Editor {
     pub fn cursor(&self) -> Cursor {
         self.cursor
     }
+    
+    pub fn get_tree(&self) -> &tree::Tree {
+        &self.bullet_tree
+    }
 
     fn on_command_key_press(&mut self, key: &str, win: &mut dyn Window) -> Result<(), String> {
         if let Some(handler) = self.command_map.get(key) {

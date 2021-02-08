@@ -28,7 +28,7 @@ fn average(times: &[Duration]) -> f32 {
     times.iter().map(|d| d.as_millis()).sum::<u128>() as f32 / times.len() as f32
 }
 
-fn main_loop(wins: &mut render::WindowStore, mut e: Editor) -> RenderStats {
+fn main_loop(wins: &mut render::WindowStore, e: &mut Editor) -> RenderStats {
     let mut stats = RenderStats {
         key_render_times: vec![],
         loop_times: vec![],
@@ -70,8 +70,8 @@ fn main() {
         editor: Box::new(NCurses::new(render::create_window(bounds.0 - 2, bounds.1, 0, 0))),
         status: Box::new(NCurses::new(render::create_window(1, bounds.1, bounds.0 - 1, 0))),
     };
-    let editor = Editor::new(window_store.editor.as_mut());
-    let stats = main_loop(&mut window_store, editor);
+    let mut editor = Editor::new(window_store.editor.as_mut());
+    let stats = main_loop(&mut window_store, &mut editor);
     n::endwin();
     n::delscreen(n::stdscr());
 
@@ -81,4 +81,5 @@ fn main() {
         average(&stats.key_render_times)
     );
     println!("average loop latency: {:.2}", average(&stats.loop_times));
+    println!("{}", editor.get_tree());
 }
